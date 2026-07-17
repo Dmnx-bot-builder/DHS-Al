@@ -39,10 +39,10 @@ export function TradeHistoryPage() {
             <p className="text-xs text-slate-500">Performance analytics and closed trade records</p>
           </div>
         </div>
-        <div className="flex rounded-lg border border-white/10 bg-white/5 p-0.5">
+        <div className="flex overflow-x-auto rounded-lg border border-white/10 bg-white/5 p-0.5 no-scrollbar">
           {(['all', '30', '14', '7'] as DateRange[]).map((r) => (
             <button key={r} onClick={() => setRange(r)}
-              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${range === r ? 'bg-brand-500 text-white' : 'text-slate-400 hover:text-white'}`}>
+              className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${range === r ? 'bg-brand-500 text-white' : 'text-slate-400 hover:text-white'}`}>
               {rangeLabels[r]}
             </button>
           ))}

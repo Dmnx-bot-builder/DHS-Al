@@ -59,7 +59,7 @@ export function StrategyPage() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-4">
             <div className="text-right">
               <p className="text-[10px] uppercase tracking-wider text-slate-500">Entry</p>
               <p className="tabular text-sm font-semibold text-slate-200">{s.entryPrice.toFixed(2)}</p>

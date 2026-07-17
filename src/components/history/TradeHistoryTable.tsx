@@ -110,7 +110,7 @@ export function TradeHistoryTable({ trades }: { trades: HistoryTrade[] }) {
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
             <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }}
               placeholder="Search…"
-              className={`${inputClass} pl-8 w-40`} />
+              className={`${inputClass} pl-8 w-28 sm:w-40`} />
           </div>
           <button onClick={() => setShowFilters((s) => !s)}
             className="relative flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10">

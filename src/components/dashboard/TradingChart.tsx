@@ -58,7 +58,7 @@ export function TradingChart() {
             <p className="mt-0.5 text-[11px] text-slate-500">Live TradingView Chart</p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
               <TrendingDown className="h-3.5 w-3.5 text-bear-400" />
@@ -76,21 +76,21 @@ export function TradingChart() {
               </div>
             </div>
           </div>
-          <div className="flex rounded-lg border border-white/10 bg-white/5 p-0.5">
+          <div className="flex overflow-x-auto rounded-lg border border-white/10 bg-white/5 p-0.5 no-scrollbar">
             {TIMEFRAMES.map((tf) => (
               <button key={tf} onClick={() => setTimeframe(tf)}
-                className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${timeframe === tf ? 'bg-brand-500 text-white' : 'text-slate-400 hover:text-white'}`}>
+                className={`shrink-0 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${timeframe === tf ? 'bg-brand-500 text-white' : 'text-slate-400 hover:text-white'}`}>
                 {tf}
               </button>
             ))}
           </div>
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white">
+          <button className="hidden h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white sm:flex">
             <Maximize2 className="h-4 w-4" />
           </button>
         </div>
       </div>
 
-      <div className="relative h-[420px] w-full">
+      <div className="relative h-[320px] w-full sm:h-[420px]">
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-ink-900/40 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-3">

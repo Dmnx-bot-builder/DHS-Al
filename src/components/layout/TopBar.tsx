@@ -1,10 +1,15 @@
 import { Menu, Search, Bell, Power, Zap } from 'lucide-react';
 import { watchlist } from '../../data/trading';
 
-export function TopBar({ onToggleSidebar }: { onToggleSidebar: () => void; }) {
+export function TopBar({ onToggleSidebar, onToggleMobile }: { onToggleSidebar: () => void; onToggleMobile: () => void; }) {
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-white/[0.06] bg-ink-900/70 px-4 backdrop-blur-xl lg:px-6">
-      <button onClick={onToggleSidebar} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white"><Menu className="h-5 w-5" /></button>
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-white/[0.06] bg-ink-900/70 px-4 backdrop-blur-xl lg:px-6">
+      <button onClick={onToggleMobile} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white lg:hidden">
+        <Menu className="h-5 w-5" />
+      </button>
+      <button onClick={onToggleSidebar} className="hidden h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white lg:flex">
+        <Menu className="h-5 w-5" />
+      </button>
       <div className="hidden items-center gap-2.5 md:flex">
         <div className="flex items-center gap-2 rounded-full border border-bull-500/30 bg-bull-500/10 px-3 py-1">
           <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-pulse-ring rounded-full bg-bull-400" /><span className="relative inline-flex h-2 w-2 rounded-full bg-bull-400" /></span>
@@ -24,7 +29,7 @@ export function TopBar({ onToggleSidebar }: { onToggleSidebar: () => void; }) {
         <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-ink-900 to-transparent" />
       </div>
       <div className="flex items-center gap-1.5">
-        <button className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white"><Search className="h-[18px] w-[18px]" /></button>
+        <button className="hidden h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white sm:flex"><Search className="h-[18px] w-[18px]" /></button>
         <button className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white"><Bell className="h-[18px] w-[18px]" /><span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-gold-500 ring-2 ring-ink-900" /></button>
         <div className="mx-1 h-6 w-px bg-white/10" />
         <button className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-brand-600 to-brand-500 px-3.5 py-2 text-xs font-semibold text-white shadow-glow transition-all hover:from-brand-500 hover:to-brand-400"><Zap className="h-4 w-4" /><span className="hidden sm:inline">Quick Trade</span></button>
