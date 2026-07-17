@@ -76,7 +76,7 @@ export function WinLossDonut({ trades }: { trades: HistoryTrade[] }) {
           <svg viewBox="0 0 150 150" className="h-full w-full -rotate-90">
             {segments.map((seg) => {
               const dash = (seg.value / total) * circumference;
-              const el = (
+ const el = (
                 <circle key={seg.label} cx="75" cy="75" r={radius} fill="none" stroke={seg.color} strokeWidth="14"
                   strokeDasharray={`${dash} ${circumference - dash}`} strokeDashoffset={-offset} strokeLinecap="butt" />
               );
