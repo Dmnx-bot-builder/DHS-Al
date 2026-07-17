@@ -4,6 +4,7 @@ export { useMutation } from './useMutation';
 export { useAuth } from './useAuth';
 export { useAccountInfo, useBrokerConnection, useAccountSummary, useConnectBroker, useDisconnectBroker } from './useAccount';
 export { useMarketQuote, useWatchlist, useCandles, useMarketNews, useMarketStatus } from './useMarket';
+export { useMarketData } from './useMarketData';
 export { useTradeSignal, useSignalHistory, useLatestSignal } from './useSignal';
 export { useOpenPositions, useExecutionLog, useExecutionSettings, useExecuteOrder, useClosePosition, useCloseAll, useUpdateExecutionSettings } from './useExecution';
 export { useHistoryTrades, useHistoryStats, useMonthlyPnl, useStrategyStats } from './useHistory';

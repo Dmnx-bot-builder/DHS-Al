@@ -6,8 +6,12 @@ import { RecentTrades } from '../components/dashboard/RecentTrades';
 import { MarketStatus } from '../components/dashboard/MarketStatus';
 import { AiStatus } from '../components/dashboard/AiStatus';
 import { EconomicNews } from '../components/dashboard/EconomicNews';
+import { MarketDataStatusBar } from '../components/dashboard/MarketDataStatusBar';
+import { useMarketData } from '../hooks/useMarketData';
 
 export function DashboardPage() {
+  const marketData = useMarketData('XAU/USD', 'M15');
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -19,6 +23,8 @@ export function DashboardPage() {
           <p className="text-xs text-slate-500">Real-time account overview and market intelligence</p>
         </div>
       </div>
+
+      <MarketDataStatusBar state={marketData} />
 
       <StatGrid />
 

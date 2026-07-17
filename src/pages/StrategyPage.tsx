@@ -6,7 +6,9 @@ import { SmartMoneyCard } from '../components/strategy/SmartMoneyCard';
 import { IndicatorsCard } from '../components/strategy/IndicatorsCard';
 import { AiDecisionPanel } from '../components/strategy/AiDecisionPanel';
 import { SessionConditionCard } from '../components/strategy/SessionConditionCard';
+import { MarketDataStatusBar } from '../components/dashboard/MarketDataStatusBar';
 import { strategyData } from '../data/strategy';
+import { useMarketData } from '../hooks/useMarketData';
 
 const decisionBanner: Record<string, { text: string; bg: string; border: string }> = {
   BUY: { text: 'text-bull-400', bg: 'bg-bull-500/10', border: 'border-bull-500/30' },
@@ -17,6 +19,7 @@ const decisionBanner: Record<string, { text: string; bg: string; border: string 
 export function StrategyPage() {
   const s = strategyData;
   const banner = decisionBanner[s.decision];
+  const marketData = useMarketData('XAU/USD', 'M15');
 
   return (
     <div className="space-y-4">
@@ -40,6 +43,9 @@ export function StrategyPage() {
           </div>
         </div>
       </div>
+
+      {/* Market data status */}
+      <MarketDataStatusBar state={marketData} />
 
       {/* AI recommendation banner */}
       <GlassCard hover={false} className={`border ${banner.border} ${banner.bg} p-4`}>

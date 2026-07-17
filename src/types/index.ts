@@ -8,3 +8,4 @@ export * from './execution';
 export * from './history';
 export * from './backtest';
 export * from './settings';
+export * from './marketData';
