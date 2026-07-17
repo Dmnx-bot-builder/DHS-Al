@@ -18,6 +18,7 @@ const DEFAULT_SYMBOL = 'XAU/USD';
 const DEFAULT_TIMEFRAME: Timeframe = 'M15';
 const DEFAULT_LIMIT = 200;
 const REFRESH_INTERVAL_MS = 15_000;
+const MAX_LIVE_FAILURES = 3;
 
 const TIMEFRAME_MS: Record<Timeframe, number> = {
   M1: 60_000,
@@ -33,12 +34,14 @@ function resolveProvider(): { provider: MarketDataProvider; mode: MarketDataMode
   const apiKey = import.meta.env.VITE_TWELVEDATA_API_KEY;
 
   if (apiKey && apiKey.trim().length > 0) {
+    console.info(`[MarketData] LIVE MODE active — TwelveData provider initialized (key: ${apiKey.slice(0, 8)}…${apiKey.slice(-4)})`);
     return {
       provider: createTwelveDataProvider(apiKey),
       mode: 'LIVE',
     };
   }
 
+  console.info('[MarketData] MOCK MODE active — no VITE_TWELVEDATA_API_KEY found');
   return { provider: MockProvider, mode: 'MOCK' };
 }
 
@@ -55,11 +58,16 @@ class MarketDataService {
   private listeners = new Set<Listener>();
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private isFetching = false;
+  private consecutiveFailures = 0;
+  private originalLiveProvider: MarketDataProvider | null = null;
 
   constructor() {
     const { provider, mode } = resolveProvider();
     this.provider = provider;
     this.mode = mode;
+    if (mode === 'LIVE') {
+      this.originalLiveProvider = provider;
+    }
   }
 
   getProviderInfo(): ProviderInfo {
@@ -96,12 +104,15 @@ class MarketDataService {
     this.timeframe = timeframe;
     this.status = 'CONNECTING';
     this.error = null;
+    this.consecutiveFailures = 0;
     this.notify();
 
+    console.info(`[MarketData] Starting — symbol: ${symbol}, timeframe: ${timeframe}, mode: ${this.mode}`);
     await this.refresh();
 
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     this.refreshTimer = setInterval(() => this.refresh(), REFRESH_INTERVAL_MS);
+    console.info(`[MarketData] Auto-refresh enabled — every ${REFRESH_INTERVAL_MS / 1000}s`);
   }
 
   stop() {
@@ -111,6 +122,7 @@ class MarketDataService {
     }
     this.status = 'DISCONNECTED';
     this.notify();
+    console.info('[MarketData] Stopped');
   }
 
   async setTimeframe(timeframe: Timeframe) {
@@ -118,7 +130,9 @@ class MarketDataService {
     this.timeframe = timeframe;
     this.candles = [];
     this.status = 'CONNECTING';
+    this.consecutiveFailures = 0;
     this.notify();
+    console.info(`[MarketData] Timeframe changed to ${timeframe}`);
     await this.refresh();
   }
 
@@ -127,7 +141,9 @@ class MarketDataService {
     this.symbol = symbol;
     this.candles = [];
     this.status = 'CONNECTING';
+    this.consecutiveFailures = 0;
     this.notify();
+    console.info(`[MarketData] Symbol changed to ${symbol}`);
     await this.refresh();
   }
 
@@ -138,7 +154,10 @@ class MarketDataService {
     try {
       const [candles, quote] = await Promise.all([
         this.provider.fetchCandles(this.symbol, this.timeframe, DEFAULT_LIMIT),
-        this.provider.fetchQuote(this.symbol).catch(() => null),
+        this.provider.fetchQuote(this.symbol).catch((err) => {
+          console.warn(`[MarketData] Quote fetch failed (non-fatal): ${err instanceof Error ? err.message : err}`);
+          return null;
+        }),
       ]);
 
       this.candles = candles;
@@ -146,13 +165,25 @@ class MarketDataService {
       this.status = 'CONNECTED';
       this.lastUpdated = Date.now();
       this.error = null;
+      this.consecutiveFailures = 0;
+
+      if (this.mode === 'LIVE') {
+        console.info(`[MarketData] LIVE data received — ${candles.length} candles, price: ${quote?.price ?? 'N/A'}`);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
+      this.consecutiveFailures++;
+      console.error(`[MarketData] Refresh failed (${this.consecutiveFailures}/${MAX_LIVE_FAILURES}): ${message}`);
 
-      if (this.mode === 'LIVE' && this.candles.length === 0) {
+      if (this.mode === 'LIVE' && this.consecutiveFailures >= MAX_LIVE_FAILURES) {
+        console.warn(`[MarketData] ${MAX_LIVE_FAILURES} consecutive failures — falling back to MOCK`);
+        this.fallbackToMock(message);
+      } else if (this.mode === 'LIVE' && this.candles.length === 0) {
         this.fallbackToMock(message);
       } else {
-        this.error = message;
+        this.error = this.mode === 'LIVE'
+          ? `Live data error (attempt ${this.consecutiveFailures}/${MAX_LIVE_FAILURES}): ${message}`
+          : message;
         this.status = this.candles.length > 0 ? 'CONNECTED' : 'ERROR';
       }
     } finally {
@@ -162,6 +193,7 @@ class MarketDataService {
   }
 
   private fallbackToMock(reason: string) {
+    console.warn(`[MarketData] Falling back to MOCK — reason: ${reason}`);
     this.provider = MockProvider;
     this.mode = 'MOCK';
     this.error = `Live data unavailable (${reason}). Switched to mock data.`;
@@ -174,10 +206,13 @@ class MarketDataService {
         this.status = 'CONNECTED';
         this.lastUpdated = Date.now();
         this.notify();
+        console.info('[MarketData] MOCK fallback successful — data flowing');
       })
-      .catch(() => {
+      .catch((err) => {
         this.status = 'ERROR';
+        this.error = `Mock fallback also failed: ${err instanceof Error ? err.message : err}`;
         this.notify();
+        console.error(`[MarketData] Mock fallback failed: ${err instanceof Error ? err.message : err}`);
       });
   }
 
