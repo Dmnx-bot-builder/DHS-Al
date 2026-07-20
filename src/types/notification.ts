@@ -6,6 +6,8 @@ export type NotificationCategory =
   | 'MARKET_ALERT'
   | 'SYSTEM';
 
+export { type NotificationPriority } from './signalLifecycle';
+
 export type NotificationSubtype =
   | 'BUY_SIGNAL'
   | 'SELL_SIGNAL'
@@ -62,6 +64,7 @@ export interface AppNotification {
   signalId?: string;
   reportId?: string;
   deepLink?: DeepLinkTarget;
+  priority?: NotificationPriority;
 }
 
 export interface NotificationInput {
@@ -73,4 +76,5 @@ export interface NotificationInput {
   signalId?: string;
   reportId?: string;
   deepLink?: DeepLinkTarget;
+  priority?: NotificationPriority;
 }
