@@ -121,6 +121,7 @@ export function ConnectionStatusCard() {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const isLive = mode === 'LIVE';
+  const isSnapshot = mode === 'SNAPSHOT';
   const apiCfg = apiHealthConfig[apiHealth];
   const reconnectCfg = reconnectConfig[reconnectStatus];
   const pollingCfg = pollingConfig[pollingStatus];
@@ -145,8 +146,8 @@ export function ConnectionStatusCard() {
       <div className="mb-3 flex items-center gap-2">
         <Activity className="h-4 w-4 text-brand-400" />
         <h3 className="text-sm font-semibold text-white">Market Connection Manager</h3>
-        <Badge variant={isLive ? 'success' : 'warning'} dot>
-          {isLive ? 'LIVE' : 'MOCK'}
+        <Badge variant={isLive ? 'success' : isSnapshot ? 'brand' : 'warning'} dot>
+          {isLive ? 'LIVE' : isSnapshot ? 'SNAPSHOT' : 'MOCK'}
         </Badge>
       </div>
 
@@ -289,8 +290,28 @@ export function ConnectionStatusCard() {
       )}
 
       {/* MOCK reason banner */}
-      {!isLive && mockReason && (
+      {!isLive && !isSnapshot && mockReason && (
         <MockReasonBanner reason={mockReason} message={mockReasonMessage} />
+      )}
+
+      {/* SNAPSHOT mode banner */}
+      {isSnapshot && (
+        <div className="mt-3 rounded-lg border border-brand-500/20 bg-brand-500/[0.04] px-3 py-2.5">
+          <div className="flex items-start gap-2">
+            <Activity className="mt-0.5 h-4 w-4 shrink-0 text-brand-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-brand-300">
+                LIVE SNAPSHOT MODE - Showing last successful live prices
+              </p>
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                {error ?? 'Live polling paused. Last successful market data is still displayed.'}
+              </p>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Last updated: {formatTime(lastLiveUpdate)} - Polling will resume automatically.
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Test result */}

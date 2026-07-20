@@ -2,6 +2,13 @@
 // Integrates ApiKeyStorageService for persistent credentials and emits
 // real event-driven notifications through NotificationService.
 //
+// ARCHITECTURE:
+//   MarketDataService is the ONLY service that talks to TwelveData.
+//   Every successful update is published to MarketCacheService.
+//   All consumers (Strategy Engine, Trade Reports, Dashboard, Notifications,
+//   Signal Lifecycle, Analytics) read from MarketCacheService - never from
+//   the provider directly.
+//
 // SINGLETON INVARIANT: This module exports exactly one `marketDataService` instance.
 // No other code should create a new MarketDataService. Hot reloads, page refreshes,
 // and Bolt preview restarts all reuse this same instance via module caching.
@@ -10,9 +17,11 @@
 //   1. Load API key from localStorage (or env fallback)
 //   2. Validate API key format
 //   3. Initialize TwelveDataProvider
-//   4. Test connection (fetch candles + quote)
-//   5. If successful: Provider = TwelveData, Mode = LIVE, API Health = VALID, begin polling
-//   6. If failed: Display exact failure reason, retry automatically, only enable MOCK after all retries fail
+//   4. Restore MarketCache from localStorage
+//   5. Test connection (fetch candles + quote)
+//   6. If successful: Provider = TwelveData, Mode = LIVE, API Health = VALID, begin polling
+//   7. If rate limited: Enter SNAPSHOT mode, keep last live prices visible
+//   8. If failed: Display exact failure reason, retry automatically, only enable MOCK after all retries fail
 
 import type {
   MarketDataProvider,
@@ -29,20 +38,27 @@ import type {
   ErrorReason,
   MockReason,
   PollingStatus,
+  TwelveDataPlan,
+  RateLimitInfo,
+  ApiUsageInfo,
+  DebugInfo,
 } from '../types';
 import { MockProvider, createTwelveDataProvider } from './providers';
 import { apiKeyStorageService } from './apiKeyStorageService';
 import { notificationService } from './notificationService';
+import { marketCacheService } from './marketCacheService';
+import { rateLimitManager } from './rateLimitManager';
+import { planService } from './planService';
 
 type Listener = (state: MarketDataState) => void;
 
 const DEFAULT_SYMBOL = 'XAU/USD';
 const DEFAULT_TIMEFRAME: Timeframe = 'M15';
 const DEFAULT_LIMIT = 200;
-const REFRESH_INTERVAL_MS = 15_000;
 const MAX_LIVE_FAILURES = 3;
 const RECONNECT_DELAY_MS = 5_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
+const OFFLINE_CHECK_INTERVAL_MS = 10_000;
 
 const TIMEFRAME_MS: Record<Timeframe, number> = {
   M1: 60_000,
@@ -126,6 +142,7 @@ class MarketDataService {
   private lastLiveUpdate: number | null = null;
   private lastSuccessfulLiveRequest: number | null = null;
   private lastFailedRequest: number | null = null;
+  private lastRequestDurationMs: number | null = null;
   private error: string | null = null;
   private errorReason: ErrorReason | null = null;
   private apiHealth: ApiHealth = 'UNKNOWN';
@@ -141,11 +158,14 @@ class MarketDataService {
   private listeners = new Set<Listener>();
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private offlineTimer: ReturnType<typeof setInterval> | null = null;
   private isFetching = false;
   private originalLiveProvider: MarketDataProvider | null = null;
   private started = false;
   private lastNotifiedMode: MarketDataMode | null = null;
   private lastNotifiedStatus: ConnectionStatus | null = null;
+  private isOnline: boolean = navigator.onLine;
+  private requestsSent = 0;
 
   constructor() {
     console.info(`${DIAG_PREFIX} === Singleton MarketDataService instantiated ===`);
@@ -155,20 +175,16 @@ class MarketDataService {
     const source = apiKeyStorageService.getSource();
 
     if (storedKey && storedKey.trim().length > 0) {
-      // Step 2: Validate API key format (basic length check)
-      console.info(`${DIAG_PREFIX} [1/5] API key loaded from ${source} (key: ${storedKey.slice(0, 8)}...${storedKey.slice(-4)})`);
-
-      // Step 3: Initialize TwelveDataProvider
+      console.info(`${DIAG_PREFIX} [1/7] API key loaded from ${source} (key: ${storedKey.slice(0, 8)}...${storedKey.slice(-4)})`);
       this.provider = createTwelveDataProvider(storedKey);
       this.mode = 'LIVE';
       this.apiKeySource = source;
       this.maskedApiKey = apiKeyStorageService.getMaskedKey();
       this.originalLiveProvider = this.provider;
-      // NOTE: apiHealth stays UNKNOWN until connection test succeeds in start()
-      console.info(`${DIAG_PREFIX} [2/5] API key validated (length: ${storedKey.length})`);
-      console.info(`${DIAG_PREFIX} [3/5] TwelveData provider created`);
+      console.info(`${DIAG_PREFIX} [2/7] API key validated (length: ${storedKey.length})`);
+      console.info(`${DIAG_PREFIX} [3/7] TwelveData provider created`);
     } else {
-      console.info(`${DIAG_PREFIX} [1/5] No API key found - initializing MOCK mode`);
+      console.info(`${DIAG_PREFIX} [1/7] No API key found - initializing MOCK mode`);
       this.provider = MockProvider;
       this.mode = 'MOCK';
       this.apiKeySource = 'none';
@@ -177,14 +193,98 @@ class MarketDataService {
       this.mockReasonMessage = 'No API key configured in Settings or .env';
     }
 
+    // Step 4: Restore MarketCache from localStorage
+    const cached = marketCacheService.getSnapshot();
+    if (cached && cached.candles.length > 0) {
+      this.candles = cached.candles;
+      this.latestQuote = cached.latestQuote;
+      console.info(`${DIAG_PREFIX} [4/7] MarketCache restored - ${cached.candles.length} candles for ${cached.symbol}`);
+    } else {
+      console.info(`${DIAG_PREFIX} [4/7] No cached market data found`);
+    }
+
     // Subscribe to API key storage changes
     apiKeyStorageService.subscribe(() => {
       this.handleApiKeyChange();
     });
+
+    // Subscribe to plan changes for adaptive polling
+    planService.subscribe(() => {
+      if (this.started) {
+        console.info(`${DIAG_PREFIX} Plan changed - restarting polling with new interval`);
+        this.startPolling();
+      }
+    });
+
+    // Subscribe to rate limit manager
+    rateLimitManager.subscribe(() => {
+      this.notify();
+    });
+    rateLimitManager.onResume(() => {
+      console.info(`${DIAG_PREFIX} Rate limit cooldown expired - resuming polling`);
+      this.consecutiveFailures = 0;
+      this.startPolling();
+    });
+
+    // Online/offline detection (Phase 8)
+    window.addEventListener('online', () => this.handleOnline());
+    window.addEventListener('offline', () => this.handleOffline());
+    this.startOfflineCheck();
   }
 
   getProviderInfo(): ProviderInfo {
     return { name: this.provider.name, label: this.provider.label, isLive: this.provider.isLive };
+  }
+
+  private getPlan(): TwelveDataPlan {
+    return planService.getPlan();
+  }
+
+  private getPollingIntervalMs(): number {
+    return planService.getPollingInterval();
+  }
+
+  private getRateLimitInfo(): RateLimitInfo {
+    return rateLimitManager.getInfo();
+  }
+
+  private getApiUsageInfo(): ApiUsageInfo {
+    const rateLimit = this.getRateLimitInfo();
+    const plan = this.getPlan();
+    const limit = planService.getRequestLimit();
+    const remaining = limit > 0 ? Math.max(0, limit - this.requestsSent) : null;
+    return {
+      provider: this.getProviderInfo(),
+      plan,
+      pollingIntervalMs: this.getPollingIntervalMs(),
+      apiStatus: this.apiHealth,
+      requestsSent: this.requestsSent,
+      estimatedRequestsRemaining: remaining,
+      lastSuccessfulRequest: this.lastSuccessfulLiveRequest,
+      lastFailedRequest: this.lastFailedRequest,
+      quotaState: rateLimit.state,
+      countdownUntilRetry: rateLimit.countdownSeconds,
+    };
+  }
+
+  private getDebugInfo(): DebugInfo {
+    const rateLimit = this.getRateLimitInfo();
+    const cacheAge = marketCacheService.getTimestamp()
+      ? Date.now() - marketCacheService.getTimestamp()!
+      : null;
+    return {
+      provider: this.getProviderInfo(),
+      connectionState: this.status,
+      pollingStatus: this.pollingStatus,
+      pollingIntervalMs: this.getPollingIntervalMs(),
+      cacheAgeMs: cacheAge,
+      lastRequestDurationMs: this.lastRequestDurationMs,
+      rateLimitState: rateLimit.state,
+      retryCountdownSeconds: rateLimit.countdownSeconds,
+      cacheSubscribers: marketCacheService.getSubscriberCount(),
+      currentSymbol: this.symbol,
+      lastError: this.error,
+    };
   }
 
   getState(): MarketDataState {
@@ -212,6 +312,14 @@ class MarketDataService {
       consecutiveFailures: this.consecutiveFailures,
       mockReason: this.mockReason,
       mockReasonMessage: this.mockReasonMessage,
+      plan: this.getPlan(),
+      pollingIntervalMs: this.getPollingIntervalMs(),
+      rateLimit: this.getRateLimitInfo(),
+      apiUsage: this.getApiUsageInfo(),
+      debug: this.getDebugInfo(),
+      cacheSubscribers: marketCacheService.getSubscriberCount(),
+      lastRequestDurationMs: this.lastRequestDurationMs,
+      isOnline: this.isOnline,
     };
   }
 
@@ -259,23 +367,24 @@ class MarketDataService {
     this.notify();
 
     console.info(`${DIAG_PREFIX} === Starting MarketDataService ===`);
-    console.info(`${DIAG_PREFIX} Symbol: ${symbol}, Timeframe: ${timeframe}, Mode: ${this.mode}`);
+    console.info(`${DIAG_PREFIX} Symbol: ${symbol}, Timeframe: ${timeframe}, Mode: ${this.mode}, Plan: ${this.getPlan()}`);
 
     if (this.mode === 'LIVE') {
-      // Step 4: Test connection before declaring LIVE
+      // Step 5-6: Test connection before declaring LIVE
       await this.testAndStartLive();
     } else {
       // No API key - start mock polling
-      console.info(`${DIAG_PREFIX} [4/5] Skipped (no API key) - starting MOCK polling`);
+      console.info(`${DIAG_PREFIX} [5/7] Skipped (no API key) - starting MOCK polling`);
       await this.refresh();
       this.startPolling();
-      console.info(`${DIAG_PREFIX} [5/5] MOCK polling started`);
+      console.info(`${DIAG_PREFIX} [7/7] MOCK polling started`);
     }
   }
 
   /**
    * Tests the live connection and starts polling if successful.
    * If the test fails, retries up to MAX_RECONNECT_ATTEMPTS before falling back to mock.
+   * If rate limited, enters SNAPSHOT mode (Phase 4).
    */
   private async testAndStartLive() {
     const key = apiKeyStorageService.getApiKey();
@@ -287,17 +396,34 @@ class MarketDataService {
       return;
     }
 
+    // Check rate limit before testing
+    if (rateLimitManager.isLimited()) {
+      console.info(`${DIAG_PREFIX} [5/7] Rate limit active - entering SNAPSHOT mode`);
+      this.enterSnapshotMode('Rate limit cooldown active');
+      return;
+    }
+
+    // Check offline status
+    if (!this.isOnline) {
+      console.info(`${DIAG_PREFIX} [5/7] Offline - entering SNAPSHOT mode`);
+      this.enterSnapshotMode('Network offline');
+      return;
+    }
+
     this.status = 'CONNECTING';
     this.notify();
-    console.info(`${DIAG_PREFIX} [4/5] Testing TwelveData connection...`);
+    console.info(`${DIAG_PREFIX} [5/7] Testing TwelveData connection...`);
 
     try {
+      const requestStart = Date.now();
       const [candles, quote] = await Promise.all([
         this.provider.fetchCandles(this.symbol, this.timeframe, DEFAULT_LIMIT),
         this.provider.fetchQuote(this.symbol).catch(() => null),
       ]);
+      this.lastRequestDurationMs = Date.now() - requestStart;
+      this.requestsSent += 2;
 
-      // Step 5: Connection successful
+      // Step 6: Connection successful
       this.candles = candles;
       this.latestQuote = quote;
       this.status = 'CONNECTED';
@@ -311,8 +437,19 @@ class MarketDataService {
       this.reconnectAttempts = 0;
       this.mockReason = null;
       this.mockReasonMessage = null;
-      console.info(`${DIAG_PREFIX} [4/5] Connection test successful - ${candles.length} candles received`);
-      console.info(`${DIAG_PREFIX} [5/5] LIVE polling started`);
+      rateLimitManager.reset();
+      console.info(`${DIAG_PREFIX} [6/7] Connection test successful - ${candles.length} candles received`);
+
+      // Publish to cache (Phase 1)
+      marketCacheService.publish({
+        symbol: this.symbol,
+        timeframe: this.timeframe,
+        candles,
+        latestQuote: quote,
+        provider: this.getProviderInfo(),
+        mode: this.mode,
+      });
+      console.info(`${DIAG_PREFIX} [7/7] Cache published - LIVE polling started`);
       this.notify();
 
       this.startPolling();
@@ -332,9 +469,17 @@ class MarketDataService {
       this.apiHealth = reason.code === 'AUTH_FAILED' ? 'INVALID' : 'UNKNOWN';
       this.error = reason.message;
       this.errorReason = reason;
-      console.error(`${DIAG_PREFIX} [4/5] Connection test FAILED: ${reason.message}`);
-      this.notify();
+      console.error(`${DIAG_PREFIX} [6/7] Connection test FAILED: ${reason.message}`);
 
+      // Phase 3: If rate limited, trigger rate limit manager and enter snapshot
+      if (reason.code === 'RATE_LIMIT_REACHED') {
+        rateLimitManager.triggerRateLimit(reason.message);
+        this.apiHealth = 'RATE_LIMITED';
+        this.enterSnapshotMode(reason.message);
+        return;
+      }
+
+      this.notify();
       // Start retry sequence - do NOT immediately fall back to mock
       this.scheduleAutoReconnect();
     }
@@ -342,12 +487,38 @@ class MarketDataService {
 
   private startPolling() {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
+    const intervalMs = this.getPollingIntervalMs();
     this.pollingStatus = this.autoRefreshEnabled ? 'ACTIVE' : 'PAUSED';
     this.refreshTimer = setInterval(() => {
       if (this.autoRefreshEnabled) this.refresh();
-    }, REFRESH_INTERVAL_MS);
-    console.info(`${DIAG_PREFIX} Auto-refresh enabled - every ${REFRESH_INTERVAL_MS / 1000}s`);
+    }, intervalMs);
+    console.info(`${DIAG_PREFIX} Auto-refresh enabled - every ${intervalMs / 1000}s (plan: ${this.getPlan()})`);
     this.notify();
+  }
+
+  /**
+   * Phase 4: Enters SNAPSHOT mode - keeps last successful live prices visible.
+   * Does NOT switch to MOCK mode. Only used when rate limited or temporarily offline.
+   */
+  private enterSnapshotMode(reason: string) {
+    console.info(`${DIAG_PREFIX} Entering SNAPSHOT mode - ${reason}`);
+    this.mode = 'SNAPSHOT';
+    this.status = this.candles.length > 0 ? 'CONNECTED' : 'CONNECTING';
+    this.error = `Live data paused - ${reason}. Showing last successful live prices.`;
+    this.notify();
+
+    // Stop polling while in snapshot mode
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    this.pollingStatus = 'PAUSED';
+
+    this.emitNotification(
+      'SWITCHED_TO_MOCK',
+      'Live Snapshot Mode',
+      `Live polling paused - ${reason}. Last successful prices are still displayed.`,
+    );
   }
 
   /**
@@ -399,6 +570,13 @@ class MarketDataService {
   }
 
   /**
+   * Phase 2: Sets the TwelveData plan. Automatically adjusts polling interval.
+   */
+  setPlan(plan: TwelveDataPlan) {
+    planService.setPlan(plan);
+  }
+
+  /**
    * User-initiated reconnect attempt - resets failure counters and
    * tries to re-establish a live connection using the stored key.
    * Recreates the provider, retests the API key, and restarts polling.
@@ -428,14 +606,15 @@ class MarketDataService {
     console.info(`${DIAG_PREFIX} Manual reconnect initiated - recreating provider and retesting API key`);
 
     try {
-      // Recreate the provider
       const testProvider = createTwelveDataProvider(key);
+      const requestStart = Date.now();
       const [candles, quote] = await Promise.all([
         testProvider.fetchCandles(this.symbol, this.timeframe, DEFAULT_LIMIT),
         testProvider.fetchQuote(this.symbol).catch(() => null),
       ]);
+      this.lastRequestDurationMs = Date.now() - requestStart;
+      this.requestsSent += 2;
 
-      // Restore LIVE mode
       this.provider = testProvider;
       this.originalLiveProvider = testProvider;
       this.mode = 'LIVE';
@@ -453,9 +632,18 @@ class MarketDataService {
       this.reconnectStatus = 'SUCCEEDED';
       this.mockReason = null;
       this.mockReasonMessage = null;
-      this.notify();
+      rateLimitManager.reset();
 
-      // Restart polling
+      marketCacheService.publish({
+        symbol: this.symbol,
+        timeframe: this.timeframe,
+        candles,
+        latestQuote: quote,
+        provider: this.getProviderInfo(),
+        mode: this.mode,
+      });
+
+      this.notify();
       this.startPolling();
 
       this.emitNotification(
@@ -498,6 +686,7 @@ class MarketDataService {
       const quote = await testProvider.fetchQuote(this.symbol);
       this.apiHealth = 'VALID';
       this.lastSuccessfulLiveRequest = Date.now();
+      this.requestsSent++;
       this.notify();
       return {
         success: true,
@@ -512,10 +701,6 @@ class MarketDataService {
     }
   }
 
-  /**
-   * Called when the user saves, updates, or removes the API key.
-   * Re-initializes the provider and attempts to reconnect live.
-   */
   private async handleApiKeyChange() {
     const key = apiKeyStorageService.getApiKey();
     this.apiKeySource = apiKeyStorageService.getSource();
@@ -537,6 +722,7 @@ class MarketDataService {
           newProvider.fetchCandles(this.symbol, this.timeframe, DEFAULT_LIMIT),
           newProvider.fetchQuote(this.symbol).catch(() => null),
         ]);
+        this.requestsSent += 2;
 
         this.provider = newProvider;
         this.originalLiveProvider = newProvider;
@@ -551,7 +737,16 @@ class MarketDataService {
         this.errorReason = null;
         this.apiHealth = 'VALID';
         this.reconnectStatus = 'SUCCEEDED';
-        this.notify();
+        rateLimitManager.reset();
+
+        marketCacheService.publish({
+          symbol: this.symbol,
+          timeframe: this.timeframe,
+          candles,
+          latestQuote: quote,
+          provider: this.getProviderInfo(),
+          mode: this.mode,
+        });
 
         if (!this.refreshTimer) {
           this.startPolling();
@@ -580,11 +775,14 @@ class MarketDataService {
           reason.message,
         );
 
-        // Fall back to mock so data keeps flowing, but schedule reconnect
-        this.fallbackToMock(reason.message, errorToMockReason(reason));
+        if (reason.code === 'RATE_LIMIT_REACHED') {
+          rateLimitManager.triggerRateLimit(reason.message);
+          this.enterSnapshotMode(reason.message);
+        } else {
+          this.fallbackToMock(reason.message, errorToMockReason(reason));
+        }
       }
     } else {
-      // Key was removed - switch to mock
       console.info(`${DIAG_PREFIX} API key removed - switching to MOCK`);
       this.provider = MockProvider;
       this.originalLiveProvider = null;
@@ -598,6 +796,7 @@ class MarketDataService {
         suggestedAction: 'Add your TwelveData API key in Settings to enable live market data.',
       };
       this.error = this.errorReason.message;
+      marketCacheService.clear();
       this.notify();
 
       if (this.started) {
@@ -606,11 +805,28 @@ class MarketDataService {
     }
   }
 
+  /**
+   * Phase 6: Request deduplication - only ONE market request may exist at any time.
+   * If polling is already running, ignore duplicate requests.
+   */
   private async refresh() {
-    if (this.isFetching) return;
+    if (this.isFetching) {
+      console.info(`${DIAG_PREFIX} Request dedup - already fetching, skipping duplicate request`);
+      return;
+    }
+    if (rateLimitManager.isLimited()) {
+      console.info(`${DIAG_PREFIX} Rate limit active - skipping refresh, staying in SNAPSHOT mode`);
+      return;
+    }
+    if (!this.isOnline) {
+      console.info(`${DIAG_PREFIX} Offline - skipping refresh, staying in SNAPSHOT mode`);
+      return;
+    }
+
     this.isFetching = true;
 
     try {
+      const requestStart = Date.now();
       const [candles, quote] = await Promise.all([
         this.provider.fetchCandles(this.symbol, this.timeframe, DEFAULT_LIMIT),
         this.provider.fetchQuote(this.symbol).catch((err) => {
@@ -618,6 +834,8 @@ class MarketDataService {
           return null;
         }),
       ]);
+      this.lastRequestDurationMs = Date.now() - requestStart;
+      this.requestsSent += 2;
 
       this.candles = candles;
       this.latestQuote = quote;
@@ -631,6 +849,17 @@ class MarketDataService {
       this.errorReason = null;
       this.consecutiveFailures = 0;
       this.reconnectStatus = 'IDLE';
+      rateLimitManager.reset();
+
+      // Phase 1: Publish to cache
+      marketCacheService.publish({
+        symbol: this.symbol,
+        timeframe: this.timeframe,
+        candles,
+        latestQuote: quote,
+        provider: this.getProviderInfo(),
+        mode: this.mode,
+      });
 
       if (this.lastNotifiedStatus !== 'CONNECTED' && this.lastNotifiedStatus !== null) {
         if (this.mode === 'LIVE') {
@@ -655,9 +884,24 @@ class MarketDataService {
       this.consecutiveFailures++;
       console.error(`${DIAG_PREFIX} Refresh failed (${this.consecutiveFailures}/${MAX_LIVE_FAILURES}): ${reason.message}`);
 
+      // Phase 3: Rate limit handling
+      if (reason.code === 'RATE_LIMIT_REACHED') {
+        rateLimitManager.triggerRateLimit(reason.message);
+        this.apiHealth = 'RATE_LIMITED';
+        // Phase 4: Enter snapshot mode, do NOT fall back to mock
+        this.enterSnapshotMode(reason.message);
+        return;
+      }
+
       if (this.mode === 'LIVE' && this.consecutiveFailures >= MAX_LIVE_FAILURES) {
-        console.warn(`${DIAG_PREFIX} ${MAX_LIVE_FAILURES} consecutive failures - falling back to MOCK (retries will continue)`);
-        this.fallbackToMock(reason.message, errorToMockReason(reason));
+        // If we have cached data, enter snapshot mode instead of mock
+        if (this.candles.length > 0) {
+          console.warn(`${DIAG_PREFIX} ${MAX_LIVE_FAILURES} consecutive failures - entering SNAPSHOT mode (retries will continue)`);
+          this.enterSnapshotMode(reason.message);
+        } else {
+          console.warn(`${DIAG_PREFIX} ${MAX_LIVE_FAILURES} consecutive failures - falling back to MOCK (retries will continue)`);
+          this.fallbackToMock(reason.message, errorToMockReason(reason));
+        }
       } else if (this.mode === 'LIVE' && this.candles.length === 0) {
         this.fallbackToMock(reason.message, errorToMockReason(reason));
       } else {
@@ -710,6 +954,14 @@ class MarketDataService {
         this.candles = candles;
         this.status = 'CONNECTED';
         this.lastUpdated = Date.now();
+        marketCacheService.publish({
+          symbol: this.symbol,
+          timeframe: this.timeframe,
+          candles,
+          latestQuote: this.latestQuote,
+          provider: this.getProviderInfo(),
+          mode: this.mode,
+        });
         this.notify();
         console.info(`${DIAG_PREFIX} MOCK fallback successful - data flowing`);
       })
@@ -720,7 +972,6 @@ class MarketDataService {
         console.error(`${DIAG_PREFIX} Mock fallback failed: ${err instanceof Error ? err.message : err}`);
       });
 
-    // Schedule auto-reconnect attempts to restore live mode
     if (wasLive) {
       this.scheduleAutoReconnect();
     }
@@ -729,7 +980,7 @@ class MarketDataService {
   private scheduleAutoReconnect() {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      console.warn(`${DIAG_PREFIX} Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached - staying in MOCK`);
+      console.warn(`${DIAG_PREFIX} Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached - staying in current mode`);
       this.reconnectStatus = 'FAILED';
       this.notify();
       return;
@@ -742,6 +993,19 @@ class MarketDataService {
     console.info(`${DIAG_PREFIX} Auto-reconnect scheduled (attempt ${attempt}/${MAX_RECONNECT_ATTEMPTS}) in ${delay}ms`);
 
     this.reconnectTimer = setTimeout(async () => {
+      if (!this.isOnline) {
+        console.info(`${DIAG_PREFIX} Auto-reconnect skipped - still offline`);
+        this.reconnectStatus = 'IDLE';
+        this.notify();
+        return;
+      }
+      if (rateLimitManager.isLimited()) {
+        console.info(`${DIAG_PREFIX} Auto-reconnect skipped - rate limit cooldown active`);
+        this.reconnectStatus = 'IDLE';
+        this.notify();
+        return;
+      }
+
       const key = apiKeyStorageService.getApiKey();
       if (!key) {
         this.reconnectStatus = 'FAILED';
@@ -759,6 +1023,7 @@ class MarketDataService {
         const liveProvider = createTwelveDataProvider(key);
         const candles = await liveProvider.fetchCandles(this.symbol, this.timeframe, DEFAULT_LIMIT);
         const quote = await liveProvider.fetchQuote(this.symbol).catch(() => null);
+        this.requestsSent += 2;
 
         this.provider = liveProvider;
         this.originalLiveProvider = liveProvider;
@@ -777,6 +1042,17 @@ class MarketDataService {
         this.reconnectAttempts = 0;
         this.mockReason = null;
         this.mockReasonMessage = null;
+        rateLimitManager.reset();
+
+        marketCacheService.publish({
+          symbol: this.symbol,
+          timeframe: this.timeframe,
+          candles,
+          latestQuote: quote,
+          provider: this.getProviderInfo(),
+          mode: this.mode,
+        });
+
         this.notify();
 
         if (!this.refreshTimer) {
@@ -799,13 +1075,57 @@ class MarketDataService {
           this.mockReason = 'INVALID_API_KEY';
           this.mockReasonMessage = reason.message;
           this.notify();
-          // Don't retry auth failures - key is invalid
           return;
         }
-        // Schedule next attempt
+        if (reason.code === 'RATE_LIMIT_REACHED') {
+          rateLimitManager.triggerRateLimit(reason.message);
+          this.apiHealth = 'RATE_LIMITED';
+          this.enterSnapshotMode(reason.message);
+          return;
+        }
         this.scheduleAutoReconnect();
       }
     }, delay);
+  }
+
+  // Phase 8: Offline mode
+  private handleOnline() {
+    console.info(`${DIAG_PREFIX} Network restored - resuming polling`);
+    this.isOnline = true;
+    this.status = this.candles.length > 0 ? 'CONNECTED' : 'CONNECTING';
+    this.notify();
+    if (this.started && this.mode === 'LIVE' && !this.refreshTimer) {
+      this.startPolling();
+    }
+  }
+
+  private handleOffline() {
+    console.info(`${DIAG_PREFIX} Network lost - entering OFFLINE mode`);
+    this.isOnline = false;
+    this.status = 'OFFLINE';
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    this.pollingStatus = 'PAUSED';
+    this.notify();
+
+    if (this.candles.length > 0) {
+      this.enterSnapshotMode('Network offline');
+    }
+  }
+
+  private startOfflineCheck() {
+    if (this.offlineTimer) clearInterval(this.offlineTimer);
+    this.offlineTimer = setInterval(() => {
+      const wasOnline = this.isOnline;
+      this.isOnline = navigator.onLine;
+      if (wasOnline && !this.isOnline) {
+        this.handleOffline();
+      } else if (!wasOnline && this.isOnline) {
+        this.handleOnline();
+      }
+    }, OFFLINE_CHECK_INTERVAL_MS);
   }
 
   hasNewCandleFormed(): boolean {

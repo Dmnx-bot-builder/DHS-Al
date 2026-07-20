@@ -31,10 +31,11 @@ const mockReasonLabels: Record<string, string> = {
 };
 
 export function MarketDataStatusBar({ state }: MarketDataStatusBarProps) {
-  const { status, provider, mode, latestQuote, lastUpdated, error, errorReason, mockReason, mockReasonMessage } = state;
+  const { status, provider, mode, latestQuote, lastUpdated, error, errorReason, mockReason, mockReasonMessage, lastLiveUpdate } = state;
   const cfg = statusConfig[status] ?? statusConfig.DISCONNECTED;
   const StatusIcon = cfg.icon;
   const isMock = mode === 'MOCK';
+  const isSnapshot = mode === 'SNAPSHOT';
 
   return (
     <GlassCard className="p-4">
@@ -52,14 +53,14 @@ export function MarketDataStatusBar({ state }: MarketDataStatusBarProps) {
 
         {/* Data mode */}
         <div className="flex items-center gap-2.5">
-          <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${isMock ? 'bg-gold-500/10' : 'bg-bull-500/10'}`}>
-            <Activity className={`h-4.5 w-4.5 ${isMock ? 'text-gold-400' : 'text-bull-400'}`} />
+          <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${isMock ? 'bg-gold-500/10' : isSnapshot ? 'bg-brand-500/10' : 'bg-bull-500/10'}`}>
+            <Activity className={`h-4.5 w-4.5 ${isMock ? 'text-gold-400' : isSnapshot ? 'text-brand-400' : 'text-bull-400'}`} />
           </div>
           <div>
             <p className="text-[10px] uppercase tracking-wider text-slate-500">Data Mode</p>
             <div className="flex items-center gap-2">
-              <span className={`text-sm font-semibold ${isMock ? 'text-gold-400' : 'text-bull-400'}`}>
-                {isMock ? 'MOCK MODE' : 'LIVE MARKET MODE'}
+              <span className={`text-sm font-semibold ${isMock ? 'text-gold-400' : isSnapshot ? 'text-brand-400' : 'text-bull-400'}`}>
+                {isMock ? 'MOCK MODE' : isSnapshot ? 'LIVE SNAPSHOT' : 'LIVE MARKET MODE'}
               </span>
             </div>
           </div>
@@ -109,6 +110,26 @@ export function MarketDataStatusBar({ state }: MarketDataStatusBarProps) {
         </div>
       </div>
 
+      {/* SNAPSHOT mode banner - last successful live prices */}
+      {isSnapshot && (
+        <div className="mt-3 rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-2.5">
+          <div className="flex items-start gap-2">
+            <Activity className="mt-0.5 h-4 w-4 shrink-0 text-brand-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-brand-300">
+                LIVE SNAPSHOT - Last updated {formatTime(lastLiveUpdate)}
+              </p>
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                {error ?? 'Live polling paused. Last successful live prices are still displayed.'}
+              </p>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Polling will resume automatically when the issue is resolved.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MOCK mode reason banner */}
       {isMock && mockReason && (
         <div className="mt-3 rounded-lg border border-gold-500/30 bg-gold-500/10 px-3 py-2.5">
@@ -130,7 +151,7 @@ export function MarketDataStatusBar({ state }: MarketDataStatusBarProps) {
       )}
 
       {/* Error banner with reason and suggested action */}
-      {error && !isMock && (
+      {error && !isMock && !isSnapshot && (
         <div className="mt-3 rounded-lg border border-gold-500/20 bg-gold-500/5 px-3 py-2.5">
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-gold-400" />
