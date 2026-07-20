@@ -2,6 +2,12 @@
 // real event-driven notifications through NotificationService.
 // Does NOT modify the decision engine or strategy logic — purely an observer.
 //
+// Integrates:
+//   - SignalValidationService: validates signals before they become official
+//   - SignalLifecycleManager: tracks formal lifecycle stages per signal
+//   - SignalQualityCalculator: computes 0-100 quality score independently
+//   - SignalAnalyticsService: records aggregate metrics for dashboards
+//
 // Detects: BUY/SELL signal changes, confidence threshold crossings, BOS/CHOCH/SWEEP,
 // demand/supply zone confirmations, trend shifts, market condition changes,
 // trade invalidations, and high volatility.
@@ -13,6 +19,12 @@ import { notificationService } from './notificationService';
 import { signalIdService } from './signalIdService';
 import { tradeReportStore } from './tradeReportStore';
 import { generateTradeReport } from './tradeReportGenerator';
+import { signalValidationService } from './signalValidationService';
+import { signalLifecycleManager } from './signalLifecycleManager';
+import { signalAnalyticsService } from './signalAnalyticsService';
+import { calculateQualityScore } from './signalQualityCalculator';
+import { getSubtypePriority } from '../components/notifications/priorityConfig';
+import type { NotificationPriority } from '../types/signalLifecycle';
 
 type Listener = (state: StrategyEventState) => void;
 
@@ -32,6 +44,10 @@ export interface StrategyEventState {
   knownSmcIds: Set<string>;
   highConfidenceNotified: boolean;
   lowConfidenceNotified: boolean;
+  lastQualityScore: number | null;
+  lastQualityLevel: string | null;
+  signalConfirmed: boolean;
+  reportGenerated: boolean;
 }
 
 const COOLDOWNS_MS: Record<string, number> = {
@@ -46,11 +62,17 @@ const COOLDOWNS_MS: Record<string, number> = {
   TREND_SHIFT: 120_000,
   HIGH_VOLATILITY: 180_000,
   HIGH_CONFIDENCE: 120_000,
+  RISK_WARNING: 180_000,
   TRADE_INVALIDATED: 0,
+  TAKE_PROFIT: 0,
+  STOP_LOSS: 0,
 };
 
 const HIGH_CONFIDENCE_THRESHOLD = 90;
 const LOW_CONFIDENCE_THRESHOLD = 60;
+
+// Confidence drop threshold for intelligent notification filtering
+const SIGNIFICANT_CONFIDENCE_DROP = 20;
 
 class StrategyEventManager {
   private listeners = new Set<Listener>();
@@ -70,6 +92,10 @@ class StrategyEventManager {
     knownSmcIds: new Set(),
     highConfidenceNotified: false,
     lowConfidenceNotified: false,
+    lastQualityScore: null,
+    lastQualityLevel: null,
+    signalConfirmed: false,
+    reportGenerated: false,
   };
   private lastEmitTimes: Map<string, number> = new Map();
 
@@ -113,6 +139,8 @@ class StrategyEventManager {
     if (this.isOnCooldown(subtype)) return;
     this.recordEmit(subtype);
 
+    const priority: NotificationPriority = getSubtypePriority(subtype);
+
     notificationService.add({
       category,
       subtype,
@@ -122,7 +150,10 @@ class StrategyEventManager {
       deepLink,
       signalId,
       reportId,
+      priority,
     });
+
+    signalAnalyticsService.recordNotificationSent();
 
     this.state.lastNotificationAt = Date.now();
     this.state.lastNotificationSubtype = subtype;
@@ -136,6 +167,11 @@ class StrategyEventManager {
     const prev = this.state.lastAnalysis;
     const isFirstRun = prev === null;
 
+    // Compute quality score independently of decision engine
+    const qualityBreakdown = calculateQualityScore(analysis);
+    this.state.lastQualityScore = qualityBreakdown.total;
+    this.state.lastQualityLevel = qualityBreakdown.level;
+
     // Ensure signal ID exists for this analysis
     const signalEntry = signalIdService.ensureSignalId(
       analysis.decision,
@@ -148,9 +184,9 @@ class StrategyEventManager {
     this.state.lastStrategyUpdate = Date.now();
 
     if (isFirstRun) {
-      this.handleFirstRun(analysis, signalId);
+      this.handleFirstRun(analysis, signalId, qualityBreakdown.total, qualityBreakdown.level);
     } else {
-      this.handleChanges(prev!, analysis, signalId);
+      this.handleChanges(prev!, analysis, signalId, qualityBreakdown.total, qualityBreakdown.level);
     }
 
     // Update state
@@ -168,17 +204,39 @@ class StrategyEventManager {
     this.notify();
   }
 
-  private handleFirstRun(analysis: StrategyAnalysis, signalId: string): void {
-    // On first run, emit signal notification and generate trade report
-    this.emitSignalNotification(analysis, signalId, null);
+  private handleFirstRun(
+    analysis: StrategyAnalysis,
+    signalId: string,
+    qualityScore: number,
+    qualityLevel: string,
+  ): void {
+    // Record signal generation in analytics
+    signalAnalyticsService.recordSignalGenerated();
 
-    // Emit notifications for existing confirmed SMC concepts
+    // Create lifecycle record in DETECTED stage
+    signalLifecycleManager.create({
+      signalId,
+      decision: analysis.decision,
+      symbol: analysis.symbol,
+      qualityScore,
+      qualityLevel: qualityLevel as 'ELITE_SETUP' | 'PREMIUM_SETUP' | 'HIGH_QUALITY' | 'TRADABLE' | 'IGNORE',
+      confidence: analysis.confidence,
+      trend: analysis.trend.direction,
+      marketCondition: analysis.marketCondition,
+      entryPrice: analysis.entryPrice,
+    });
+
+    // Begin validation cycle
+    signalValidationService.beginValidation(analysis, signalId);
+    signalLifecycleManager.transition('VALIDATING');
+
+    // Attempt validation immediately (will likely fail on first cycle due to candle close check)
+    this.attemptValidation(analysis, signalId);
+
+    // Emit notifications for existing confirmed SMC concepts (informational)
     analysis.smartMoneyConcepts.forEach((smc) => {
       this.emitSmcNotification(smc, analysis, signalId);
     });
-
-    // Check confidence thresholds
-    this.checkConfidenceThresholds(analysis, signalId, null);
 
     // Check market condition
     if (analysis.marketCondition === 'VOLATILE') {
@@ -186,18 +244,52 @@ class StrategyEventManager {
     }
   }
 
-  private handleChanges(prev: StrategyAnalysis, curr: StrategyAnalysis, signalId: string): void {
+  private handleChanges(
+    prev: StrategyAnalysis,
+    curr: StrategyAnalysis,
+    signalId: string,
+    qualityScore: number,
+    qualityLevel: string,
+  ): void {
     const prevDecision = prev.decision;
     const currDecision = curr.decision;
     const currConfidence = curr.confidence;
 
     // 1. Decision changes
     if (prevDecision !== currDecision) {
-      // Decision changed — generate new trade report and emit signal notification
-      const reportId = this.generateAndStoreReport(curr, signalId);
-      this.emitSignalNotification(curr, signalId, reportId);
+      // Direction changed — archive old signal, create new one
+      if (prevDecision === 'BUY' || prevDecision === 'SELL') {
+        signalLifecycleManager.close('INVALIDATED');
+        signalAnalyticsService.recordSignalInvalidated();
+        signalValidationService.clearPending();
+        this.state.signalConfirmed = false;
+        this.state.reportGenerated = false;
+      }
 
-      // If previous was BUY or SELL and now NO_TRADE, emit trade invalidated
+      // Record new signal generation
+      signalAnalyticsService.recordSignalGenerated();
+
+      // Create new lifecycle record
+      signalLifecycleManager.create({
+        signalId,
+        decision: currDecision,
+        symbol: curr.symbol,
+        qualityScore,
+        qualityLevel: qualityLevel as 'ELITE_SETUP' | 'PREMIUM_SETUP' | 'HIGH_QUALITY' | 'TRADABLE' | 'IGNORE',
+        confidence: currConfidence,
+        trend: curr.trend.direction,
+        marketCondition: curr.marketCondition,
+        entryPrice: curr.entryPrice,
+      });
+
+      // Begin validation for new signal
+      signalValidationService.beginValidation(curr, signalId);
+      signalLifecycleManager.transition('VALIDATING');
+
+      // Attempt validation
+      this.attemptValidation(curr, signalId);
+
+      // If previous was BUY/SELL and now NO_TRADE, emit trade invalidated
       if ((prevDecision === 'BUY' || prevDecision === 'SELL') && currDecision === 'NO_TRADE') {
         signalIdService.invalidateActive();
         this.emit(
@@ -213,14 +305,29 @@ class StrategyEventManager {
             confidence: currConfidence,
             timestamp: Date.now(),
           },
-          { page: 'strategy', reportId: reportId ?? '' },
+          { page: 'strategy' },
           signalId,
-          reportId ?? undefined,
         );
       }
     } else {
-      // Same decision — check if confidence crossed thresholds
-      this.checkConfidenceThresholds(curr, signalId, this.state.lastReportId);
+      // Same decision — update lifecycle metrics
+      signalLifecycleManager.updateMetrics(
+        qualityScore,
+        qualityLevel as 'ELITE_SETUP' | 'PREMIUM_SETUP' | 'HIGH_QUALITY' | 'TRADABLE' | 'IGNORE',
+        currConfidence,
+      );
+
+      // Continue validation if not yet confirmed
+      if (!this.state.signalConfirmed) {
+        signalValidationService.beginValidation(curr, signalId);
+        this.attemptValidation(curr, signalId);
+      } else {
+        // Already confirmed — update monitoring
+        signalLifecycleManager.transition('MONITORING');
+
+        // Intelligent notification filtering: only notify on significant changes
+        this.checkSignificantChanges(prev, curr, signalId);
+      }
     }
 
     // 2. New SMC concepts detected
@@ -258,6 +365,122 @@ class StrategyEventManager {
     }
     if (currDecision === 'SELL' && prevDecision !== 'SELL') {
       this.state.lastSellAt = Date.now();
+    }
+  }
+
+  /**
+   * Attempts validation of the pending signal. If validation passes,
+   * transitions lifecycle to CONFIRMED -> ACTIVE -> MONITORING,
+   * generates ONE trade report, and emits the BUY/SELL notification.
+   */
+  private attemptValidation(analysis: StrategyAnalysis, signalId: string): void {
+    if (this.state.signalConfirmed) return;
+
+    const result = signalValidationService.validate(analysis);
+
+    if (result.confirmed) {
+      // Signal is now confirmed
+      this.state.signalConfirmed = true;
+      const confirmationTimeMs = Date.now() - (signalLifecycleManager.getActive()?.createdAt ?? Date.now());
+
+      signalLifecycleManager.transition('CONFIRMED');
+      signalAnalyticsService.recordSignalConfirmed(confirmationTimeMs);
+
+      // Transition to ACTIVE
+      signalLifecycleManager.transition('ACTIVE');
+
+      // Transition to MONITORING
+      signalLifecycleManager.transition('MONITORING');
+
+      // Generate ONE trade report only when signal becomes confirmed
+      let reportId: string | null = null;
+      if (!this.state.reportGenerated && (analysis.decision === 'BUY' || analysis.decision === 'SELL')) {
+        reportId = this.generateAndStoreReport(analysis, signalId);
+        this.state.reportGenerated = true;
+        signalLifecycleManager.setReportId(reportId);
+      }
+
+      // Emit the BUY/SELL notification (only after validation confirms)
+      this.emitSignalNotification(analysis, signalId, reportId);
+
+      // Check confidence thresholds
+      this.checkConfidenceThresholds(analysis, signalId, reportId);
+    }
+  }
+
+  /**
+   * Intelligent notification filtering — only notifies on meaningful changes
+   * after the signal is confirmed. Does NOT notify on small confidence drift.
+   */
+  private checkSignificantChanges(
+    prev: StrategyAnalysis,
+    curr: StrategyAnalysis,
+    signalId: string,
+  ): void {
+    const confDrop = (prev.confidence ?? 0) - curr.confidence;
+
+    // Significant confidence drop (e.g., 92% -> 65%)
+    if (confDrop >= SIGNIFICANT_CONFIDENCE_DROP) {
+      this.emit(
+        'RISK_WARNING',
+        'TRADE_UPDATE',
+        'Significant Confidence Drop',
+        `Confidence dropped ${confDrop}% to ${curr.confidence}%. Structure may be weakening.`,
+        {
+          asset: curr.symbol,
+          price: curr.entryPrice,
+          direction: curr.decision,
+          previousConfidence: prev.confidence,
+          currentConfidence: curr.confidence,
+          drop: confDrop,
+          timestamp: Date.now(),
+          signalId,
+        },
+        { page: 'strategy' },
+        signalId,
+      );
+    }
+
+    // BOS -> CHOCH (structure break reversal)
+    const prevBos = prev.smartMoneyConcepts.find((c) => c.type === 'BOS' && c.status !== 'MITIGATED');
+    const currChoch = curr.smartMoneyConcepts.find((c) => c.type === 'CHOCH');
+    const prevChoch = prev.smartMoneyConcepts.find((c) => c.type === 'CHOCH');
+    if (prevBos && currChoch && !prevChoch) {
+      // BOS was replaced by CHOCH — emit trend shift
+      this.emitTrendShift(curr, signalId);
+    }
+
+    // Demand zone invalidated (was active, now gone or mitigated)
+    const prevDemand = prev.smartMoneyConcepts.find(
+      (c) => c.type === 'DEMAND' && (c.status === 'ACTIVE' || c.status === 'CONFIRMED'),
+    );
+    const currDemand = curr.smartMoneyConcepts.find(
+      (c) => c.type === 'DEMAND' && (c.status === 'ACTIVE' || c.status === 'CONFIRMED'),
+    );
+    if (prevDemand && !currDemand) {
+      this.emit(
+        'TRADE_INVALIDATED',
+        'TRADE_UPDATE',
+        'Demand Zone Invalidated',
+        `Demand zone at ${prevDemand.price.toFixed(2)} is no longer valid. Setup may be compromised.`,
+        {
+          asset: curr.symbol,
+          price: curr.entryPrice,
+          direction: curr.decision,
+          confidence: curr.confidence,
+          timestamp: Date.now(),
+          signalId,
+        },
+        { page: 'strategy' },
+        signalId,
+      );
+    }
+
+    // New liquidity sweep appeared
+    const prevSweep = prev.smartMoneyConcepts.find((c) => c.type === 'SWEEP');
+    const currSweep = curr.smartMoneyConcepts.find((c) => c.type === 'SWEEP');
+    if (!prevSweep && currSweep) {
+      this.emitSmcNotification(currSweep, curr, signalId);
     }
   }
 
@@ -501,6 +724,64 @@ class StrategyEventManager {
   }
 
   /**
+   * Records a notification as accurate (for analytics tracking).
+   * Call this when a notification's prediction matches the actual outcome.
+   */
+  recordNotificationAccurate(): void {
+    signalAnalyticsService.recordNotificationAccurate();
+  }
+
+  /**
+   * Closes the active signal with a specific outcome (take profit or stop loss).
+   * Transitions lifecycle through closure stage and archives.
+   */
+  closeSignal(reason: 'TAKE_PROFIT' | 'STOP_LOSS' | 'INVALIDATED' | 'EXPIRED' | 'MANUAL_CLOSE'): void {
+    const active = signalLifecycleManager.getActive();
+    if (!active) return;
+
+    if (reason === 'TAKE_PROFIT') {
+      signalAnalyticsService.recordTakeProfit();
+    } else if (reason === 'STOP_LOSS') {
+      signalAnalyticsService.recordStopLoss();
+    } else if (reason === 'INVALIDATED') {
+      signalAnalyticsService.recordSignalInvalidated();
+    }
+
+    const durationMs = active.closedAt && active.createdAt
+      ? active.closedAt - active.createdAt
+      : Date.now() - active.createdAt;
+    signalAnalyticsService.recordSignalArchived(durationMs);
+
+    signalLifecycleManager.close(reason);
+    signalValidationService.clearPending();
+    this.state.signalConfirmed = false;
+    this.state.reportGenerated = false;
+
+    if (reason === 'TAKE_PROFIT' || reason === 'STOP_LOSS') {
+      const subtype: NotificationSubtype = reason === 'TAKE_PROFIT' ? 'TAKE_PROFIT' : 'STOP_LOSS';
+      this.emit(
+        subtype,
+        'TRADE_UPDATE',
+        reason === 'TAKE_PROFIT' ? 'Take Profit Hit' : 'Stop Loss Hit',
+        reason === 'TAKE_PROFIT'
+          ? `Trade closed in profit on ${active.symbol}.`
+          : `Trade closed at stop loss on ${active.symbol}.`,
+        {
+          asset: active.symbol,
+          signalId: active.signalId,
+          outcome: reason,
+          timestamp: Date.now(),
+        },
+        { page: 'strategy' },
+        active.signalId,
+        active.reportId ?? undefined,
+      );
+    }
+
+    this.notify();
+  }
+
+  /**
    * Resets the event manager state (useful for testing or manual reset).
    */
   reset(): void {
@@ -520,8 +801,15 @@ class StrategyEventManager {
       knownSmcIds: new Set(),
       highConfidenceNotified: false,
       lowConfidenceNotified: false,
+      lastQualityScore: null,
+      lastQualityLevel: null,
+      signalConfirmed: false,
+      reportGenerated: false,
     };
     this.lastEmitTimes.clear();
+    signalValidationService.reset();
+    signalLifecycleManager.reset();
+    signalAnalyticsService.reset();
     this.notify();
   }
 }

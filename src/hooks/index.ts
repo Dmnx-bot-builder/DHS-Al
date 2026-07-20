@@ -14,3 +14,6 @@ export { useAllSettings, useUpdateSettingsSection, useUpdateBroker, useUpdateTra
 export { useNotifications } from './useNotifications';
 export { useStrategyEvents } from './useStrategyEvents';
 export { useSignalId, useSignalIdHistory } from './useSignalId';
+export { useSignalValidation } from './useSignalValidation';
+export { useSignalLifecycle } from './useSignalLifecycle';
+export { useSignalAnalytics } from './useSignalAnalytics';

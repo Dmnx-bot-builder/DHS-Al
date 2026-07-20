@@ -16,3 +16,8 @@ export { apiKeyStorageService } from './apiKeyStorageService';
 export { signalIdService } from './signalIdService';
 export { tradeReportStore } from './tradeReportStore';
 export { strategyEventManager } from './strategyEventManager';
+export { signalValidationService } from './signalValidationService';
+export { signalLifecycleManager } from './signalLifecycleManager';
+export { signalAnalyticsService } from './signalAnalyticsService';
+export { calculateQualityScore, getQualityLevel, QUALITY_WEIGHTS, QUALITY_LEVEL_LABELS } from './signalQualityCalculator';
+export { getSubtypePriority, priorityConfig, PRIORITY_ORDER } from '../components/notifications/priorityConfig';
