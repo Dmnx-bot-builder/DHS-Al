@@ -10,3 +10,4 @@ export { backtestService } from './backtestService';
 export { settingsService } from './settingsService';
 export { marketDataService } from './marketDataService';
 export { MockProvider, createTwelveDataProvider } from './providers';
+export { generateTradeReport } from './tradeReportGenerator';

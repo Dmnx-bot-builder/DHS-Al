@@ -6,8 +6,10 @@ import { SmartMoneyCard } from '../components/strategy/SmartMoneyCard';
 import { IndicatorsCard } from '../components/strategy/IndicatorsCard';
 import { AiDecisionPanel } from '../components/strategy/AiDecisionPanel';
 import { SessionConditionCard } from '../components/strategy/SessionConditionCard';
+import { TradeReportCard } from '../components/strategy/TradeReportCard';
 import { MarketDataStatusBar } from '../components/dashboard/MarketDataStatusBar';
 import { strategyData } from '../data/strategy';
+import { generateTradeReport } from '../services/tradeReportGenerator';
 import { useMarketData } from '../hooks/useMarketData';
 
 const decisionBanner: Record<string, { text: string; bg: string; border: string }> = {
@@ -20,6 +22,8 @@ export function StrategyPage() {
   const s = strategyData;
   const banner = decisionBanner[s.decision];
   const marketData = useMarketData('XAU/USD', 'M15');
+  const tradeReport = generateTradeReport(s);
+  const showReport = s.decision === 'BUY' || s.decision === 'SELL';
 
   return (
     <div className="space-y-4">
@@ -104,6 +108,13 @@ export function StrategyPage() {
           <SmartMoneyCard concepts={s.smartMoneyConcepts} />
         </div>
       </div>
+
+      {/* DHS AI Trade Report — shown for BUY/SELL decisions */}
+      {showReport && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <TradeReportCard report={tradeReport} />
+        </div>
+      )}
     </div>
   );
 }
