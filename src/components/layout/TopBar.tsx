@@ -1,7 +1,8 @@
-import { Menu, Search, Bell, Power, Zap } from 'lucide-react';
+import { Menu, Search, Power, Zap } from 'lucide-react';
 import { watchlist } from '../../data/trading';
+import { NotificationBell } from '../notifications/NotificationBell';
 
-export function TopBar({ onToggleSidebar, onToggleMobile }: { onToggleSidebar: () => void; onToggleMobile: () => void; }) {
+export function TopBar({ onToggleSidebar, onToggleMobile, onToggleNotifications, notificationUnreadCount }: { onToggleSidebar: () => void; onToggleMobile: () => void; onToggleNotifications: () => void; notificationUnreadCount: number; }) {
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-white/[0.06] bg-ink-900/70 px-4 backdrop-blur-xl lg:px-6">
       <button onClick={onToggleMobile} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white lg:hidden">
@@ -30,7 +31,7 @@ export function TopBar({ onToggleSidebar, onToggleMobile }: { onToggleSidebar: (
       </div>
       <div className="flex items-center gap-1.5">
         <button className="hidden h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white sm:flex"><Search className="h-[18px] w-[18px]" /></button>
-        <button className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white"><Bell className="h-[18px] w-[18px]" /><span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-gold-500 ring-2 ring-ink-900" /></button>
+        <NotificationBell unreadCount={notificationUnreadCount} onClick={onToggleNotifications} />
         <div className="mx-1 h-6 w-px bg-white/10" />
         <button className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-brand-600 to-brand-500 px-3.5 py-2 text-xs font-semibold text-white shadow-glow transition-all hover:from-brand-500 hover:to-brand-400"><Zap className="h-4 w-4" /><span className="hidden sm:inline">Quick Trade</span></button>
         <div className="ml-1 flex items-center gap-2.5 rounded-lg p-1 pr-2 transition-colors hover:bg-white/5">

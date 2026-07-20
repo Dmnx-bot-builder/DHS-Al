@@ -10,3 +10,4 @@ export * from './backtest';
 export * from './settings';
 export * from './marketData';
 export * from './tradeReport';
+export * from './notification';
