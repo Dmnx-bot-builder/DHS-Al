@@ -15,6 +15,7 @@ interface NotificationDrawerProps {
   onMarkAllRead: () => void;
   onRemove: (id: string) => void;
   onClearAll: () => void;
+  onNotificationClick?: (notification: AppNotification) => void;
 }
 
 const CATEGORY_ORDER: NotificationCategory[] = ['TRADE_SIGNAL', 'TRADE_UPDATE', 'MARKET_ALERT', 'SYSTEM'];
@@ -29,6 +30,7 @@ export function NotificationDrawer({
   onMarkAllRead,
   onRemove,
   onClearAll,
+  onNotificationClick,
 }: NotificationDrawerProps) {
   const grouped = CATEGORY_ORDER.map((cat) => ({
     category: cat,
@@ -120,6 +122,7 @@ export function NotificationDrawer({
                           onMarkRead={onMarkRead}
                           onMarkUnread={onMarkUnread}
                           onRemove={onRemove}
+                          onClick={onNotificationClick}
                         />
                       ))}
                     </div>

@@ -22,9 +22,10 @@ interface NotificationCardProps {
   onMarkRead: (id: string) => void;
   onMarkUnread: (id: string) => void;
   onRemove: (id: string) => void;
+  onClick?: (notification: AppNotification) => void;
 }
 
-export function NotificationCard({ notification, onMarkRead, onMarkUnread, onRemove }: NotificationCardProps) {
+export function NotificationCard({ notification, onMarkRead, onMarkUnread, onRemove, onClick }: NotificationCardProps) {
   const catCfg = categoryConfig[notification.category];
   const subCfg = subtypeConfig[notification.subtype];
   const Icon = subCfg.icon;
@@ -35,7 +36,8 @@ export function NotificationCard({ notification, onMarkRead, onMarkUnread, onRem
         notification.read
           ? 'border-white/[0.04] bg-white/[0.02]'
           : 'border-white/[0.08] bg-white/[0.04]'
-      } hover:border-white/[0.12]`}
+      } hover:border-white/[0.12] ${onClick ? 'cursor-pointer' : ''}`}
+      onClick={() => onClick?.(notification)}
     >
       <div className="flex items-start gap-3">
         <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${subCfg.bgClass}`}>

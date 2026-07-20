@@ -72,4 +72,5 @@ export interface TradeReport {
   confidenceBreakdown: ReportConfidenceBreakdown;
   marketCondition: MarketCondition;
   session: string;
+  signalId?: string;
 }

@@ -4,7 +4,7 @@
 import {
   FileText, TrendingUp, TrendingDown, Ban, Target, Shield, ShieldAlert,
   Gauge, Activity, Layers, Droplets, BarChart3, Clock, Percent,
-  ArrowUpRight, ArrowDownRight, CheckCircle2, AlertTriangle,
+  ArrowUpRight, ArrowDownRight, CheckCircle2, AlertTriangle, Hash,
 } from 'lucide-react';
 import { GlassCard, Badge } from '../ui/GlassCard';
 import type { TradeReport, AiDecision } from '../../types';
@@ -72,6 +72,15 @@ export function TradeReportCard({ report }: TradeReportCardProps) {
         </div>
         <Badge variant="brand" dot>{report.marketCondition}</Badge>
       </div>
+
+      {/* Signal Information */}
+      {report.signalId && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-brand-500/20 bg-brand-500/5 px-3 py-2">
+          <Hash className="h-3.5 w-3.5 text-brand-300" />
+          <span className="text-[10px] uppercase tracking-wider text-slate-500">Signal ID</span>
+          <span className="ml-auto font-mono text-[11px] font-semibold text-brand-300">{report.signalId}</span>
+        </div>
+      )}
 
       {/* ── 1. Signal Summary ── */}
       <div className="mt-4">

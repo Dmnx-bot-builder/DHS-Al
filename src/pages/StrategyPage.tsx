@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { LineChart, TrendingUp, ArrowUpRight } from 'lucide-react';
 import { GlassCard, Badge } from '../components/ui/GlassCard';
 import { TrendAnalysisCard } from '../components/strategy/TrendAnalysisCard';
@@ -10,7 +11,10 @@ import { TradeReportCard } from '../components/strategy/TradeReportCard';
 import { MarketDataStatusBar } from '../components/dashboard/MarketDataStatusBar';
 import { strategyData } from '../data/strategy';
 import { generateTradeReport } from '../services/tradeReportGenerator';
+import { strategyEventManager } from '../services/strategyEventManager';
 import { useMarketData } from '../hooks/useMarketData';
+import { useStrategyEvents } from '../hooks/useStrategyEvents';
+import { useSignalId } from '../hooks/useSignalId';
 
 const decisionBanner: Record<string, { text: string; bg: string; border: string }> = {
   BUY: { text: 'text-bull-400', bg: 'bg-bull-500/10', border: 'border-bull-500/30' },
@@ -22,8 +26,18 @@ export function StrategyPage() {
   const s = strategyData;
   const banner = decisionBanner[s.decision];
   const marketData = useMarketData('XAU/USD', 'M15');
-  const tradeReport = generateTradeReport(s);
+  const events = useStrategyEvents();
+  const signalIdEntry = useSignalId();
+
+  // Feed analysis into the event manager on mount and whenever strategyData changes
+  useEffect(() => {
+    strategyEventManager.processAnalysis(s);
+  }, [s]);
+
   const showReport = s.decision === 'BUY' || s.decision === 'SELL';
+  const tradeReport = showReport
+    ? { ...generateTradeReport(s), signalId: signalIdEntry?.signalId ?? events.lastSignalId ?? undefined }
+    : null;
 
   return (
     <div className="space-y-4">
@@ -110,7 +124,7 @@ export function StrategyPage() {
       </div>
 
       {/* DHS AI Trade Report — shown for BUY/SELL decisions */}
-      {showReport && (
+      {showReport && tradeReport && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <TradeReportCard report={tradeReport} />
         </div>

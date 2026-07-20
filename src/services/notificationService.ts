@@ -1,13 +1,13 @@
 // DHS AI Notification Service
 // Singleton service with localStorage persistence, subscription pattern,
-// and deduplication. Matches the existing marketDataService architecture.
+// and deduplication. Supports signal IDs, report IDs, and deep linking.
 
 import type { AppNotification, NotificationInput } from '../types/notification';
 
 type Listener = (notifications: AppNotification[]) => void;
 
 const STORAGE_KEY = 'dhs-ai-notifications';
-const MAX_NOTIFICATIONS = 100;
+const MAX_NOTIFICATIONS = 500;
 const DEDUP_WINDOW_MS = 5_000;
 
 function loadFromStorage(): AppNotification[] {
@@ -50,6 +50,18 @@ class NotificationService {
     return this.notifications.filter((n) => !n.read).length;
   }
 
+  getById(id: string): AppNotification | undefined {
+    return this.notifications.find((n) => n.id === id);
+  }
+
+  getBySignalId(signalId: string): AppNotification[] {
+    return this.notifications.filter((n) => n.signalId === signalId);
+  }
+
+  getByReportId(reportId: string): AppNotification | undefined {
+    return this.notifications.find((n) => n.reportId === reportId);
+  }
+
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
     listener(this.getAll());
@@ -84,6 +96,9 @@ class NotificationService {
       timestamp: Date.now(),
       read: false,
       meta: input.meta,
+      signalId: input.signalId,
+      reportId: input.reportId,
+      deepLink: input.deepLink,
     };
 
     this.notifications = [notification, ...this.notifications].slice(0, MAX_NOTIFICATIONS);

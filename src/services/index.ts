@@ -13,3 +13,6 @@ export { MockProvider, createTwelveDataProvider } from './providers';
 export { generateTradeReport } from './tradeReportGenerator';
 export { notificationService } from './notificationService';
 export { apiKeyStorageService } from './apiKeyStorageService';
+export { signalIdService } from './signalIdService';
+export { tradeReportStore } from './tradeReportStore';
+export { strategyEventManager } from './strategyEventManager';

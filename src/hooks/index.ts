@@ -12,3 +12,5 @@ export { useHistoryTrades, useHistoryStats, useMonthlyPnl, useStrategyStats } fr
 export { useRunBacktest, useBacktestHistory, useBacktestStrategies, useBacktestSymbols } from './useBacktest';
 export { useAllSettings, useUpdateSettingsSection, useUpdateBroker, useUpdateTradingSettings, useUpdateNotifications, useUpdateAppearance, useUpdateSecurity, useUpdateBackup } from './useSettings';
 export { useNotifications } from './useNotifications';
+export { useStrategyEvents } from './useStrategyEvents';
+export { useSignalId, useSignalIdHistory } from './useSignalId';

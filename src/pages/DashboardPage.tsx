@@ -8,6 +8,7 @@ import { AiStatus } from '../components/dashboard/AiStatus';
 import { EconomicNews } from '../components/dashboard/EconomicNews';
 import { MarketDataStatusBar } from '../components/dashboard/MarketDataStatusBar';
 import { ConnectionStatusCard } from '../components/dashboard/ConnectionStatusCard';
+import { StrategySignalCard } from '../components/dashboard/StrategySignalCard';
 import { useMarketData } from '../hooks/useMarketData';
 
 export function DashboardPage() {
@@ -38,6 +39,7 @@ export function DashboardPage() {
           <RecentTrades />
         </div>
         <div className="space-y-4">
+          <StrategySignalCard />
           <MarketStatus />
           <AiStatus />
           <EconomicNews />

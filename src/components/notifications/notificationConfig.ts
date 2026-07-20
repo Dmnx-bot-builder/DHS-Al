@@ -5,6 +5,7 @@ import {
   AlertTriangle, Newspaper, Sunrise, Sunset, Activity, Droplets,
   Layers, Repeat, Wifi, WifiOff, KeyRound, Link2, Link2Off, Settings, RefreshCw,
   Save, KeyRound as KeyEdit, Trash2, RefreshCcw, ArrowUpRight,
+  Gauge, Target, ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
 import type { NotificationCategory, NotificationSubtype } from '../../types/notification';
@@ -44,6 +45,10 @@ export const subtypeConfig: Record<NotificationSubtype, SubtypeConfig> = {
   LIQUIDITY_SWEEP: { icon: Droplets, iconClass: 'text-brand-300', bgClass: 'bg-brand-500/10' },
   NEW_BOS: { icon: Layers, iconClass: 'text-brand-400', bgClass: 'bg-brand-500/10' },
   NEW_CHOCH: { icon: Repeat, iconClass: 'text-gold-400', bgClass: 'bg-gold-500/10' },
+  DEMAND_ZONE_CONFIRMED: { icon: Target, iconClass: 'text-bull-400', bgClass: 'bg-bull-500/10' },
+  SUPPLY_ZONE_CONFIRMED: { icon: ShieldCheck, iconClass: 'text-bear-400', bgClass: 'bg-bear-500/10' },
+  TREND_SHIFT: { icon: Activity, iconClass: 'text-brand-300', bgClass: 'bg-brand-500/10' },
+  HIGH_CONFIDENCE: { icon: Gauge, iconClass: 'text-bull-400', bgClass: 'bg-bull-500/10' },
   LIVE_CONNECTED: { icon: Wifi, iconClass: 'text-bull-400', bgClass: 'bg-bull-500/10' },
   LIVE_DISCONNECTED: { icon: WifiOff, iconClass: 'text-bear-400', bgClass: 'bg-bear-500/10' },
   API_KEY_MISSING: { icon: KeyRound, iconClass: 'text-gold-400', bgClass: 'bg-gold-500/10' },

@@ -22,6 +22,10 @@ export type NotificationSubtype =
   | 'LIQUIDITY_SWEEP'
   | 'NEW_BOS'
   | 'NEW_CHOCH'
+  | 'DEMAND_ZONE_CONFIRMED'
+  | 'SUPPLY_ZONE_CONFIRMED'
+  | 'TREND_SHIFT'
+  | 'HIGH_CONFIDENCE'
   | 'LIVE_CONNECTED'
   | 'LIVE_DISCONNECTED'
   | 'API_KEY_MISSING'
@@ -37,6 +41,15 @@ export type NotificationSubtype =
   | 'SWITCHED_TO_MOCK'
   | 'RETURNED_TO_LIVE';
 
+export type DeepLinkTarget =
+  | { page: 'strategy' }
+  | { page: 'strategy'; section: 'smc' }
+  | { page: 'dashboard' }
+  | { page: 'execution' }
+  | { page: 'history' }
+  | { page: 'settings' }
+  | { page: 'strategy'; reportId: string };
+
 export interface AppNotification {
   id: string;
   category: NotificationCategory;
@@ -46,6 +59,9 @@ export interface AppNotification {
   timestamp: number;
   read: boolean;
   meta?: Record<string, string | number | boolean>;
+  signalId?: string;
+  reportId?: string;
+  deepLink?: DeepLinkTarget;
 }
 
 export interface NotificationInput {
@@ -54,4 +70,7 @@ export interface NotificationInput {
   title: string;
   description: string;
   meta?: Record<string, string | number | boolean>;
+  signalId?: string;
+  reportId?: string;
+  deepLink?: DeepLinkTarget;
 }

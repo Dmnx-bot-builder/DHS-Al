@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { Sidebar } from './components/layout/Sidebar';
 import { TopBar } from './components/layout/TopBar';
 import { NotificationDrawer } from './components/notifications/NotificationDrawer';
@@ -9,7 +9,7 @@ import { TradeHistoryPage } from './pages/TradeHistoryPage';
 import { BacktestingPage } from './pages/BacktestingPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { useNotifications } from './hooks/useNotifications';
-import { notificationService } from './services/notificationService';
+import type { AppNotification, DeepLinkTarget } from './types/notification';
 
 function App() {
   const [active, setActive] = useState('dashboard');
@@ -18,36 +18,16 @@ function App() {
   const [notifOpen, setNotifOpen] = useState(false);
   const { notifications, unreadCount, markRead, markUnread, markAllRead, remove, clearAll } = useNotifications();
 
-  useEffect(() => {
-    const existing = notificationService.getAll();
-    if (existing.length > 0) return;
-
-    notificationService.add({
-      category: 'TRADE_SIGNAL',
-      subtype: 'BUY_SIGNAL',
-      title: 'BUY Signal · XAU/USD',
-      description: 'Confidence: 84% — Bullish market structure confirmed with BOS. Tap to view Trade Report.',
-      meta: { symbol: 'XAU/USD', confidence: 84 },
-    });
-    notificationService.add({
-      category: 'MARKET_ALERT',
-      subtype: 'NEW_BOS',
-      title: 'New BOS Detected',
-      description: 'Break of Structure confirmed at 2384.70 on M15 — bullish order flow.',
-    });
-    notificationService.add({
-      category: 'MARKET_ALERT',
-      subtype: 'LIQUIDITY_SWEEP',
-      title: 'Liquidity Sweep',
-      description: 'Sell-side liquidity swept below 2371.40 before bullish reversal.',
-    });
-    notificationService.add({
-      category: 'SYSTEM',
-      subtype: 'BROKER_CONNECTED',
-      title: 'Broker Connected',
-      description: 'MT5 account linked — server: ICMarkets-Demo, latency 42ms.',
-    });
-  }, []);
+  const handleNotificationClick = useCallback((notification: AppNotification) => {
+    if (!notification.read) {
+      markRead(notification.id);
+    }
+    const link: DeepLinkTarget | undefined = notification.deepLink;
+    if (link) {
+      setActive(link.page);
+    }
+    setNotifOpen(false);
+  }, [markRead]);
 
   const renderPage = () => {
     switch (active) {
@@ -89,6 +69,7 @@ function App() {
         onMarkAllRead={markAllRead}
         onRemove={remove}
         onClearAll={clearAll}
+        onNotificationClick={handleNotificationClick}
       />
     </div>
   );
