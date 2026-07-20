@@ -2,9 +2,9 @@
 
 import type { Timeframe } from './market';
 
-export type MarketDataMode = 'LIVE' | 'MOCK';
+export type MarketDataMode = 'LIVE' | 'MOCK' | 'SNAPSHOT';
 
-export type ConnectionStatus = 'CONNECTED' | 'DISCONNECTED' | 'CONNECTING' | 'ERROR';
+export type ConnectionStatus = 'CONNECTED' | 'DISCONNECTED' | 'CONNECTING' | 'ERROR' | 'OFFLINE';
 
 export type ApiHealth = 'VALID' | 'INVALID' | 'MISSING' | 'RATE_LIMITED' | 'UNKNOWN';
 
@@ -25,6 +25,12 @@ export type MockReason =
   | null;
 
 export type PollingStatus = 'ACTIVE' | 'PAUSED' | 'STOPPED';
+
+export type TwelveDataPlan = 'FREE' | 'BASIC' | 'GROW' | 'PRO';
+
+export type RateLimitState = 'OK' | 'LIMITED' | 'COOLDOWN';
+
+export type FreshnessState = 'FRESH' | 'STALE' | 'EXPIRED';
 
 export interface ProviderInfo {
   name: ProviderName;
@@ -60,6 +66,53 @@ export interface CandleSubscription {
   latestQuote: LiveQuote | null;
 }
 
+export interface MarketSnapshot {
+  symbol: string;
+  timeframe: Timeframe;
+  candles: OhlcCandle[];
+  latestQuote: LiveQuote | null;
+  provider: ProviderInfo;
+  mode: MarketDataMode;
+  timestamp: number;
+  freshness: FreshnessState;
+}
+
+export interface RateLimitInfo {
+  state: RateLimitState;
+  failureTimestamp: number | null;
+  retryCount: number;
+  resetTimestamp: number | null;
+  countdownSeconds: number | null;
+  message: string | null;
+}
+
+export interface ApiUsageInfo {
+  provider: ProviderInfo;
+  plan: TwelveDataPlan;
+  pollingIntervalMs: number;
+  apiStatus: ApiHealth;
+  requestsSent: number;
+  estimatedRequestsRemaining: number | null;
+  lastSuccessfulRequest: number | null;
+  lastFailedRequest: number | null;
+  quotaState: RateLimitState;
+  countdownUntilRetry: number | null;
+}
+
+export interface DebugInfo {
+  provider: ProviderInfo;
+  connectionState: ConnectionStatus;
+  pollingStatus: PollingStatus;
+  pollingIntervalMs: number;
+  cacheAgeMs: number | null;
+  lastRequestDurationMs: number | null;
+  rateLimitState: RateLimitState;
+  retryCountdownSeconds: number | null;
+  cacheSubscribers: number;
+  currentSymbol: string;
+  lastError: string | null;
+}
+
 export interface MarketDataState {
   symbol: string;
   timeframe: Timeframe;
@@ -84,6 +137,14 @@ export interface MarketDataState {
   consecutiveFailures: number;
   mockReason: MockReason;
   mockReasonMessage: string | null;
+  plan: TwelveDataPlan;
+  pollingIntervalMs: number;
+  rateLimit: RateLimitInfo;
+  apiUsage: ApiUsageInfo;
+  debug: DebugInfo;
+  cacheSubscribers: number;
+  lastRequestDurationMs: number | null;
+  isOnline: boolean;
 }
 
 export interface ErrorReason {

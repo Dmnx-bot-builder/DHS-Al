@@ -8,6 +8,8 @@ import { AiStatus } from '../components/dashboard/AiStatus';
 import { EconomicNews } from '../components/dashboard/EconomicNews';
 import { MarketDataStatusBar } from '../components/dashboard/MarketDataStatusBar';
 import { ConnectionStatusCard } from '../components/dashboard/ConnectionStatusCard';
+import { ApiUsageCard } from '../components/dashboard/ApiUsageCard';
+import { DebugPanel } from '../components/dashboard/DebugPanel';
 import { StrategySignalCard } from '../components/dashboard/StrategySignalCard';
 import { useMarketData } from '../hooks/useMarketData';
 
@@ -30,6 +32,8 @@ export function DashboardPage() {
 
       <ConnectionStatusCard />
 
+      <ApiUsageCard />
+
       <StatGrid />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -45,6 +49,8 @@ export function DashboardPage() {
           <EconomicNews />
         </div>
       </div>
+
+      <DebugPanel />
     </div>
   );
 }
