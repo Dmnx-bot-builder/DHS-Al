@@ -4,6 +4,7 @@ import { X, Bell, CheckCheck, Trash2 } from 'lucide-react';
 import type { AppNotification, NotificationCategory } from '../../types/notification';
 import { categoryConfig } from './notificationConfig';
 import { NotificationCard } from './NotificationCard';
+import { priorityConfig, getSubtypePriority } from './priorityConfig';
 
 interface NotificationDrawerProps {
   open: boolean;
@@ -34,7 +35,14 @@ export function NotificationDrawer({
 }: NotificationDrawerProps) {
   const grouped = CATEGORY_ORDER.map((cat) => ({
     category: cat,
-    items: notifications.filter((n) => n.category === cat),
+    items: notifications
+      .filter((n) => n.category === cat)
+      .sort((a, b) => {
+        const pa = priorityConfig[a.priority ?? getSubtypePriority(a.subtype)].order;
+        const pb = priorityConfig[b.priority ?? getSubtypePriority(b.subtype)].order;
+        if (pa !== pb) return pa - pb;
+        return b.timestamp - a.timestamp;
+      }),
   })).filter((g) => g.items.length > 0);
 
   return (
