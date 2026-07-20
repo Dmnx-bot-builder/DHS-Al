@@ -1,32 +1,13 @@
-// useConnectionStatus — React hook wrapping marketDataService with
+// useConnectionStatus - React hook wrapping marketDataService with
 // connection management actions (reconnect, test, setAutoRefresh).
+// Uses the real service state as initial value instead of a MOCK default.
 
 import { useState, useEffect, useCallback } from 'react';
 import { marketDataService } from '../services/marketDataService';
 import type { MarketDataState } from '../types';
 
-const IDLE_STATE: MarketDataState = {
-  symbol: 'XAU/USD',
-  timeframe: 'M15',
-  candles: [],
-  latestQuote: null,
-  mode: 'MOCK',
-  status: 'DISCONNECTED',
-  provider: { name: 'mock', label: 'Mock Data', isLive: false },
-  lastUpdated: null,
-  lastLiveUpdate: null,
-  error: null,
-  errorReason: null,
-  apiHealth: 'UNKNOWN',
-  reconnectStatus: 'IDLE',
-  autoRefreshEnabled: true,
-  apiKeySource: 'none',
-  maskedApiKey: null,
-  consecutiveFailures: 0,
-};
-
 export function useConnectionStatus() {
-  const [state, setState] = useState<MarketDataState>(IDLE_STATE);
+  const [state, setState] = useState<MarketDataState>(() => marketDataService.getState());
 
   useEffect(() => {
     const unsubscribe = marketDataService.subscribe((next) => {

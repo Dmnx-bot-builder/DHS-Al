@@ -1,4 +1,4 @@
-// MarketDataStatusBar — displays live market data connection info
+// MarketDataStatusBar - displays live market data connection info
 
 import { Activity, AlertTriangle, Wifi, WifiOff, Clock, TrendingUp, Lightbulb } from 'lucide-react';
 import { GlassCard, Badge } from '../ui/GlassCard';
@@ -16,12 +16,22 @@ const statusConfig: Record<string, { label: string; variant: 'success' | 'danger
 };
 
 function formatTime(timestamp: number | null): string {
-  if (!timestamp) return '—';
+  if (!timestamp) return '-';
   return new Date(timestamp).toLocaleTimeString('en-GB', { hour12: false });
 }
 
+const mockReasonLabels: Record<string, string> = {
+  NO_API_KEY: 'No API Key Configured',
+  INVALID_API_KEY: 'Invalid API Key',
+  NETWORK_TIMEOUT: 'Network Timeout',
+  RATE_LIMIT: 'Rate Limit Reached',
+  PROVIDER_UNAVAILABLE: 'TwelveData Unavailable',
+  INIT_FAILURE: 'Initialization Failure',
+  UNKNOWN_ERROR: 'Unknown Error',
+};
+
 export function MarketDataStatusBar({ state }: MarketDataStatusBarProps) {
-  const { status, provider, mode, latestQuote, lastUpdated, error, errorReason } = state;
+  const { status, provider, mode, latestQuote, lastUpdated, error, errorReason, mockReason, mockReasonMessage } = state;
   const cfg = statusConfig[status] ?? statusConfig.DISCONNECTED;
   const StatusIcon = cfg.icon;
   const isMock = mode === 'MOCK';
@@ -99,8 +109,28 @@ export function MarketDataStatusBar({ state }: MarketDataStatusBarProps) {
         </div>
       </div>
 
+      {/* MOCK mode reason banner */}
+      {isMock && mockReason && (
+        <div className="mt-3 rounded-lg border border-gold-500/30 bg-gold-500/10 px-3 py-2.5">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-gold-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-gold-300">
+                MOCK MODE Active - {mockReasonLabels[mockReason] ?? mockReason}
+              </p>
+              {mockReasonMessage && (
+                <p className="mt-0.5 text-[11px] text-slate-400">{mockReasonMessage}</p>
+              )}
+              <p className="mt-1 text-[10px] text-slate-500">
+                Add or update your TwelveData API key in Settings to restore LIVE mode.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Error banner with reason and suggested action */}
-      {error && (
+      {error && !isMock && (
         <div className="mt-3 rounded-lg border border-gold-500/20 bg-gold-500/5 px-3 py-2.5">
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-gold-400" />

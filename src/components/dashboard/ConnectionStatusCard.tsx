@@ -1,14 +1,16 @@
-// ConnectionStatusCard — detailed market connection status with manual controls.
+// ConnectionStatusCard - detailed market connection status with manual controls.
 // Renders on the dashboard below MarketDataStatusBar.
+// Shows full diagnostics: provider, connection state, last successful/failed
+// request, retry counter, error code/message, polling status, and MOCK reason.
 
 import { useState } from 'react';
 import {
   Activity, Wifi, WifiOff, AlertTriangle, Clock, RefreshCw, RefreshCcw,
-  KeyRound, Zap, Pause, Play, CheckCircle2, XCircle, Loader2,
+  KeyRound, Zap, Pause, Play, CheckCircle2, XCircle, Loader2, Radio,
 } from 'lucide-react';
 import { GlassCard, Badge } from '../ui/GlassCard';
 import { useConnectionStatus } from '../../hooks/useConnectionStatus';
-import type { ApiHealth, ReconnectStatus, ErrorReason } from '../../types';
+import type { ApiHealth, ReconnectStatus, ErrorReason, PollingStatus, MockReason } from '../../types';
 
 const apiHealthConfig: Record<ApiHealth, { label: string; variant: 'success' | 'danger' | 'warning' | 'neutral' }> = {
   VALID: { label: 'Valid', variant: 'success' },
@@ -26,13 +28,29 @@ const reconnectConfig: Record<ReconnectStatus, { label: string; variant: 'neutra
   FAILED: { label: 'Failed', variant: 'danger' },
 };
 
+const pollingConfig: Record<PollingStatus, { label: string; variant: 'neutral' | 'success' | 'warning' | 'danger' }> = {
+  ACTIVE: { label: 'Active', variant: 'success' },
+  PAUSED: { label: 'Paused', variant: 'warning' },
+  STOPPED: { label: 'Stopped', variant: 'danger' },
+};
+
+const mockReasonLabels: Record<Exclude<MockReason, null>, { label: string; variant: 'danger' | 'warning' }> = {
+  NO_API_KEY: { label: 'No API Key', variant: 'warning' },
+  INVALID_API_KEY: { label: 'Invalid API Key', variant: 'danger' },
+  NETWORK_TIMEOUT: { label: 'Network Timeout', variant: 'warning' },
+  RATE_LIMIT: { label: 'Rate Limit', variant: 'warning' },
+  PROVIDER_UNAVAILABLE: { label: 'Provider Unavailable', variant: 'warning' },
+  INIT_FAILURE: { label: 'Initialization Failure', variant: 'danger' },
+  UNKNOWN_ERROR: { label: 'Unknown Error', variant: 'danger' },
+};
+
 function formatTime(timestamp: number | null): string {
-  if (!timestamp) return '—';
+  if (!timestamp) return '-';
   return new Date(timestamp).toLocaleTimeString('en-GB', { hour12: false });
 }
 
 function formatRelative(timestamp: number | null): string {
-  if (!timestamp) return '—';
+  if (!timestamp) return '-';
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
@@ -55,6 +73,23 @@ function ErrorBanner({ reason }: { reason: ErrorReason }) {
   );
 }
 
+function MockReasonBanner({ reason, message }: { reason: Exclude<MockReason, null>; message: string | null }) {
+  const cfg = mockReasonLabels[reason];
+  return (
+    <div className={`mt-3 rounded-lg border px-3 py-2.5 ${cfg.variant === 'danger' ? 'border-bear-500/20 bg-bear-500/[0.04]' : 'border-gold-500/20 bg-gold-500/[0.04]'}`}>
+      <div className="flex items-start gap-2">
+        <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${cfg.variant === 'danger' ? 'text-bear-400' : 'text-gold-400'}`} />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold text-slate-200">
+            MOCK MODE - {cfg.label}
+          </p>
+          {message && <p className="mt-0.5 text-[11px] text-slate-400">{message}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ConnectionStatusCard() {
   const {
     mode,
@@ -62,13 +97,20 @@ export function ConnectionStatusCard() {
     provider,
     apiHealth,
     reconnectStatus,
+    reconnectAttempts,
     autoRefreshEnabled,
+    pollingStatus,
     lastLiveUpdate,
     lastUpdated,
+    lastSuccessfulLiveRequest,
+    lastFailedRequest,
     errorReason,
+    error,
     consecutiveFailures,
     maskedApiKey,
     apiKeySource,
+    mockReason,
+    mockReasonMessage,
     reconnect,
     testConnection,
     setAutoRefresh,
@@ -81,6 +123,7 @@ export function ConnectionStatusCard() {
   const isLive = mode === 'LIVE';
   const apiCfg = apiHealthConfig[apiHealth];
   const reconnectCfg = reconnectConfig[reconnectStatus];
+  const pollingCfg = pollingConfig[pollingStatus];
 
   const handleReconnect = async () => {
     setReconnecting(true);
@@ -108,7 +151,7 @@ export function ConnectionStatusCard() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        {/* Connection Status */}
+        {/* Connection State */}
         <div className="rounded-lg border border-white/[0.06] bg-ink-800/40 px-3 py-2.5">
           <div className="flex items-center gap-1.5">
             {status === 'CONNECTED' ? <Wifi className="h-3.5 w-3.5 text-bull-400" /> : <WifiOff className="h-3.5 w-3.5 text-bear-400" />}
@@ -119,7 +162,7 @@ export function ConnectionStatusCard() {
           </p>
         </div>
 
-        {/* Data Provider */}
+        {/* Current Provider */}
         <div className="rounded-lg border border-white/[0.06] bg-ink-800/40 px-3 py-2.5">
           <p className="text-[10px] uppercase tracking-wider text-slate-500">Provider</p>
           <p className="mt-1 truncate text-sm font-semibold text-slate-200">{provider.label}</p>
@@ -136,14 +179,53 @@ export function ConnectionStatusCard() {
           </div>
         </div>
 
-        {/* Auto Refresh */}
+        {/* Polling Status */}
         <div className="rounded-lg border border-white/[0.06] bg-ink-800/40 px-3 py-2.5">
           <div className="flex items-center gap-1.5">
-            {autoRefreshEnabled ? <Play className="h-3.5 w-3.5 text-bull-400" /> : <Pause className="h-3.5 w-3.5 text-gold-400" />}
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">Auto Refresh</p>
+            <Radio className="h-3.5 w-3.5 text-slate-500" />
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">Polling</p>
           </div>
-          <p className={`mt-1 text-sm font-semibold ${autoRefreshEnabled ? 'text-bull-400' : 'text-gold-400'}`}>
-            {autoRefreshEnabled ? 'Active' : 'Paused'}
+          <div className="mt-1">
+            <Badge variant={pollingCfg.variant} dot>{pollingCfg.label}</Badge>
+          </div>
+        </div>
+
+        {/* Last Successful Live Request */}
+        <div className="rounded-lg border border-white/[0.06] bg-ink-800/40 px-3 py-2.5">
+          <div className="flex items-center gap-1.5">
+            <CheckCircle2 className="h-3.5 w-3.5 text-bull-400" />
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">Last Live Success</p>
+          </div>
+          <p className="mt-1 text-sm font-medium text-slate-300">{formatRelative(lastSuccessfulLiveRequest)}</p>
+          <p className="text-[10px] text-slate-600">{formatTime(lastSuccessfulLiveRequest)}</p>
+        </div>
+
+        {/* Last Failed Request */}
+        <div className="rounded-lg border border-white/[0.06] bg-ink-800/40 px-3 py-2.5">
+          <div className="flex items-center gap-1.5">
+            <XCircle className="h-3.5 w-3.5 text-bear-400" />
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">Last Failed Request</p>
+          </div>
+          <p className="mt-1 text-sm font-medium text-slate-300">{formatRelative(lastFailedRequest)}</p>
+          <p className="text-[10px] text-slate-600">{formatTime(lastFailedRequest)}</p>
+        </div>
+
+        {/* Retry Counter */}
+        <div className="rounded-lg border border-white/[0.06] bg-ink-800/40 px-3 py-2.5">
+          <div className="flex items-center gap-1.5">
+            <RefreshCcw className="h-3.5 w-3.5 text-slate-500" />
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">Retry Counter</p>
+          </div>
+          <p className={`mt-1 text-sm font-semibold ${reconnectAttempts > 0 ? 'text-gold-400' : 'text-slate-300'}`}>
+            {reconnectAttempts}/5
+          </p>
+        </div>
+
+        {/* Failures */}
+        <div className="rounded-lg border border-white/[0.06] bg-ink-800/40 px-3 py-2.5">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">Failures</p>
+          <p className={`mt-1 text-sm font-semibold ${consecutiveFailures > 0 ? 'text-gold-400' : 'text-slate-300'}`}>
+            {consecutiveFailures}/3
           </p>
         </div>
 
@@ -167,11 +249,14 @@ export function ConnectionStatusCard() {
           </div>
         </div>
 
-        {/* Failures */}
+        {/* Auto Refresh */}
         <div className="rounded-lg border border-white/[0.06] bg-ink-800/40 px-3 py-2.5">
-          <p className="text-[10px] uppercase tracking-wider text-slate-500">Failures</p>
-          <p className={`mt-1 text-sm font-semibold ${consecutiveFailures > 0 ? 'text-gold-400' : 'text-slate-300'}`}>
-            {consecutiveFailures}/3
+          <div className="flex items-center gap-1.5">
+            {autoRefreshEnabled ? <Play className="h-3.5 w-3.5 text-bull-400" /> : <Pause className="h-3.5 w-3.5 text-gold-400" />}
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">Auto Refresh</p>
+          </div>
+          <p className={`mt-1 text-sm font-semibold ${autoRefreshEnabled ? 'text-bull-400' : 'text-gold-400'}`}>
+            {autoRefreshEnabled ? 'Active' : 'Paused'}
           </p>
         </div>
 
@@ -182,6 +267,17 @@ export function ConnectionStatusCard() {
         </div>
       </div>
 
+      {/* Error Code and Message */}
+      {error && (
+        <div className="mt-3 rounded-lg border border-bear-500/20 bg-bear-500/[0.04] px-3 py-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-bear-400" />
+            <span className="text-[10px] uppercase tracking-wider text-slate-500">Error Message:</span>
+            <span className="text-xs text-bear-300">{error}</span>
+          </div>
+        </div>
+      )}
+
       {/* API Key info */}
       {maskedApiKey && (
         <div className="mt-3 flex items-center gap-2 rounded-lg border border-white/[0.06] bg-ink-800/40 px-3 py-2">
@@ -190,6 +286,11 @@ export function ConnectionStatusCard() {
           <span className="text-xs font-mono text-slate-300">{maskedApiKey}</span>
           <Badge variant="neutral" className="ml-auto text-[10px]">{apiKeySource}</Badge>
         </div>
+      )}
+
+      {/* MOCK reason banner */}
+      {!isLive && mockReason && (
+        <MockReasonBanner reason={mockReason} message={mockReasonMessage} />
       )}
 
       {/* Test result */}

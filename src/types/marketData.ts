@@ -14,6 +14,18 @@ export type ProviderName = 'mock' | 'twelvedata' | 'polygon' | 'finnhub' | 'alph
 
 export type ApiKeySource = 'local' | 'env' | 'none';
 
+export type MockReason =
+  | 'NO_API_KEY'
+  | 'INVALID_API_KEY'
+  | 'NETWORK_TIMEOUT'
+  | 'RATE_LIMIT'
+  | 'PROVIDER_UNAVAILABLE'
+  | 'INIT_FAILURE'
+  | 'UNKNOWN_ERROR'
+  | null;
+
+export type PollingStatus = 'ACTIVE' | 'PAUSED' | 'STOPPED';
+
 export interface ProviderInfo {
   name: ProviderName;
   label: string;
@@ -58,14 +70,20 @@ export interface MarketDataState {
   provider: ProviderInfo;
   lastUpdated: number | null;
   lastLiveUpdate: number | null;
+  lastSuccessfulLiveRequest: number | null;
+  lastFailedRequest: number | null;
   error: string | null;
   errorReason: ErrorReason | null;
   apiHealth: ApiHealth;
   reconnectStatus: ReconnectStatus;
+  reconnectAttempts: number;
   autoRefreshEnabled: boolean;
+  pollingStatus: PollingStatus;
   apiKeySource: ApiKeySource;
   maskedApiKey: string | null;
   consecutiveFailures: number;
+  mockReason: MockReason;
+  mockReasonMessage: string | null;
 }
 
 export interface ErrorReason {
