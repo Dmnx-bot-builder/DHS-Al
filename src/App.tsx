@@ -23,12 +23,6 @@ function App() {
     if (existing.length > 0) return;
 
     notificationService.add({
-      category: 'SYSTEM',
-      subtype: 'LIVE_CONNECTED',
-      title: 'Live Market Connected',
-      description: 'TwelveData provider active — receiving real-time XAU/USD market data.',
-    });
-    notificationService.add({
       category: 'TRADE_SIGNAL',
       subtype: 'BUY_SIGNAL',
       title: 'BUY Signal · XAU/USD',

@@ -13,7 +13,7 @@ export function NotificationBell({ unreadCount, onClick }: NotificationBellProps
     <button
       onClick={onClick}
       className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
-      aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}`}
+      aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
     >
       <Bell className="h-[18px] w-[18px]" />
       <NotificationBadge count={unreadCount} />

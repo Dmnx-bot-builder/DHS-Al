@@ -1,6 +1,6 @@
 // MarketDataStatusBar — displays live market data connection info
 
-import { Activity, AlertTriangle, Wifi, WifiOff, Clock, TrendingUp } from 'lucide-react';
+import { Activity, AlertTriangle, Wifi, WifiOff, Clock, TrendingUp, Lightbulb } from 'lucide-react';
 import { GlassCard, Badge } from '../ui/GlassCard';
 import type { MarketDataState } from '../../types';
 
@@ -21,7 +21,7 @@ function formatTime(timestamp: number | null): string {
 }
 
 export function MarketDataStatusBar({ state }: MarketDataStatusBarProps) {
-  const { status, provider, mode, latestQuote, lastUpdated, error } = state;
+  const { status, provider, mode, latestQuote, lastUpdated, error, errorReason } = state;
   const cfg = statusConfig[status] ?? statusConfig.DISCONNECTED;
   const StatusIcon = cfg.icon;
   const isMock = mode === 'MOCK';
@@ -99,11 +99,21 @@ export function MarketDataStatusBar({ state }: MarketDataStatusBarProps) {
         </div>
       </div>
 
-      {/* Warning banner */}
+      {/* Error banner with reason and suggested action */}
       {error && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-gold-500/20 bg-gold-500/5 px-3 py-2">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-gold-400" />
-          <p className="text-xs text-gold-300">{error}</p>
+        <div className="mt-3 rounded-lg border border-gold-500/20 bg-gold-500/5 px-3 py-2.5">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-gold-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-gold-300">{error}</p>
+              {errorReason && errorReason.suggestedAction && (
+                <div className="mt-1.5 flex items-start gap-1.5">
+                  <Lightbulb className="mt-0.5 h-3 w-3 shrink-0 text-brand-400" />
+                  <p className="text-[11px] text-slate-400">{errorReason.suggestedAction}</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </GlassCard>

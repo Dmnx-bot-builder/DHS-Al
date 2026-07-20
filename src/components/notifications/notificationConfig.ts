@@ -4,6 +4,7 @@ import {
   TrendingUp, TrendingDown, Ban, Trophy, ShieldAlert, XCircle, CircleSlash,
   AlertTriangle, Newspaper, Sunrise, Sunset, Activity, Droplets,
   Layers, Repeat, Wifi, WifiOff, KeyRound, Link2, Link2Off, Settings, RefreshCw,
+  Save, KeyRound as KeyEdit, Trash2, RefreshCcw, ArrowUpRight,
   type LucideIcon,
 } from 'lucide-react';
 import type { NotificationCategory, NotificationSubtype } from '../../types/notification';
@@ -50,4 +51,11 @@ export const subtypeConfig: Record<NotificationSubtype, SubtypeConfig> = {
   BROKER_DISCONNECTED: { icon: Link2Off, iconClass: 'text-bear-400', bgClass: 'bg-bear-500/10' },
   SETTINGS_UPDATED: { icon: Settings, iconClass: 'text-brand-300', bgClass: 'bg-brand-500/10' },
   VERSION_UPDATED: { icon: RefreshCw, iconClass: 'text-brand-300', bgClass: 'bg-brand-500/10' },
+  API_KEY_SAVED: { icon: Save, iconClass: 'text-bull-400', bgClass: 'bg-bull-500/10' },
+  API_KEY_UPDATED: { icon: KeyEdit, iconClass: 'text-brand-300', bgClass: 'bg-brand-500/10' },
+  API_KEY_REMOVED: { icon: Trash2, iconClass: 'text-bear-400', bgClass: 'bg-bear-500/10' },
+  API_KEY_INVALID: { icon: AlertTriangle, iconClass: 'text-gold-400', bgClass: 'bg-gold-500/10' },
+  AUTO_RECONNECT_SUCCESS: { icon: RefreshCcw, iconClass: 'text-bull-400', bgClass: 'bg-bull-500/10' },
+  SWITCHED_TO_MOCK: { icon: WifiOff, iconClass: 'text-gold-400', bgClass: 'bg-gold-500/10' },
+  RETURNED_TO_LIVE: { icon: ArrowUpRight, iconClass: 'text-bull-400', bgClass: 'bg-bull-500/10' },
 };

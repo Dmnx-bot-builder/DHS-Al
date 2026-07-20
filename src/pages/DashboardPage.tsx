@@ -7,6 +7,7 @@ import { MarketStatus } from '../components/dashboard/MarketStatus';
 import { AiStatus } from '../components/dashboard/AiStatus';
 import { EconomicNews } from '../components/dashboard/EconomicNews';
 import { MarketDataStatusBar } from '../components/dashboard/MarketDataStatusBar';
+import { ConnectionStatusCard } from '../components/dashboard/ConnectionStatusCard';
 import { useMarketData } from '../hooks/useMarketData';
 
 export function DashboardPage() {
@@ -25,6 +26,8 @@ export function DashboardPage() {
       </div>
 
       <MarketDataStatusBar state={marketData} />
+
+      <ConnectionStatusCard />
 
       <StatGrid />
 

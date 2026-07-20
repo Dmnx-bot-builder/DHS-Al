@@ -12,3 +12,4 @@ export { marketDataService } from './marketDataService';
 export { MockProvider, createTwelveDataProvider } from './providers';
 export { generateTradeReport } from './tradeReportGenerator';
 export { notificationService } from './notificationService';
+export { apiKeyStorageService } from './apiKeyStorageService';

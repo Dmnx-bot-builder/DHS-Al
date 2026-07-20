@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
-import { Settings, ChevronRight, Wifi, SlidersHorizontal, BellRing, Palette, Lock, Database } from 'lucide-react';
+import { Settings, ChevronRight, Wifi, SlidersHorizontal, BellRing, Palette, Lock, Database, KeyRound } from 'lucide-react';
 import { BrokerSection } from '../components/settings/BrokerSection';
 import { TradingSection } from '../components/settings/TradingSection';
 import { NotificationsSection } from '../components/settings/NotificationsSection';
 import { AppearanceSection } from '../components/settings/AppearanceSection';
 import { SecuritySection } from '../components/settings/SecuritySection';
 import { BackupSection } from '../components/settings/BackupSection';
+import { ApiConfigSection } from '../components/settings/ApiConfigSection';
 import { SaveBar } from '../components/settings/SettingsControls';
 import {
   type BrokerSettings, type ApiConfig, type TradingSettings,
@@ -14,9 +15,10 @@ import {
   defaultAppearance, defaultSecurity, defaultBackup,
 } from '../data/settings';
 
-type TabId = 'broker' | 'trading' | 'notifications' | 'appearance' | 'security' | 'backup';
+type TabId = 'api' | 'broker' | 'trading' | 'notifications' | 'appearance' | 'security' | 'backup';
 
 const tabs: { id: TabId; label: string; icon: typeof Wifi }[] = [
+  { id: 'api', label: 'API Key', icon: KeyRound },
   { id: 'broker', label: 'Broker & API', icon: Wifi },
   { id: 'trading', label: 'Trading', icon: SlidersHorizontal },
   { id: 'notifications', label: 'Notifications', icon: BellRing },
@@ -26,7 +28,7 @@ const tabs: { id: TabId; label: string; icon: typeof Wifi }[] = [
 ];
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('broker');
+  const [activeTab, setActiveTab] = useState<TabId>('api');
   const [broker, setBroker] = useState<BrokerSettings>(defaultBroker);
   const [api, setApi] = useState<ApiConfig>(defaultApi);
   const [trading, setTrading] = useState<TradingSettings>(defaultTrading);
@@ -103,6 +105,9 @@ export function SettingsPage() {
         </div>
 
         <div className="min-w-0 flex-1 space-y-4">
+          {activeTab === 'api' && (
+            <ApiConfigSection />
+          )}
           {activeTab === 'broker' && (
             <BrokerSection broker={broker} api={api} onBrokerChange={setBroker} onApiChange={setApi} />
           )}

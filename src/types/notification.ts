@@ -28,7 +28,14 @@ export type NotificationSubtype =
   | 'BROKER_CONNECTED'
   | 'BROKER_DISCONNECTED'
   | 'SETTINGS_UPDATED'
-  | 'VERSION_UPDATED';
+  | 'VERSION_UPDATED'
+  | 'API_KEY_SAVED'
+  | 'API_KEY_UPDATED'
+  | 'API_KEY_REMOVED'
+  | 'API_KEY_INVALID'
+  | 'AUTO_RECONNECT_SUCCESS'
+  | 'SWITCHED_TO_MOCK'
+  | 'RETURNED_TO_LIVE';
 
 export interface AppNotification {
   id: string;

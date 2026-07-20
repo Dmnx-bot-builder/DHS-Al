@@ -6,7 +6,13 @@ export type MarketDataMode = 'LIVE' | 'MOCK';
 
 export type ConnectionStatus = 'CONNECTED' | 'DISCONNECTED' | 'CONNECTING' | 'ERROR';
 
+export type ApiHealth = 'VALID' | 'INVALID' | 'MISSING' | 'RATE_LIMITED' | 'UNKNOWN';
+
+export type ReconnectStatus = 'IDLE' | 'PENDING' | 'IN_PROGRESS' | 'SUCCEEDED' | 'FAILED';
+
 export type ProviderName = 'mock' | 'twelvedata' | 'polygon' | 'finnhub' | 'alphavantage';
+
+export type ApiKeySource = 'local' | 'env' | 'none';
 
 export interface ProviderInfo {
   name: ProviderName;
@@ -51,7 +57,21 @@ export interface MarketDataState {
   status: ConnectionStatus;
   provider: ProviderInfo;
   lastUpdated: number | null;
+  lastLiveUpdate: number | null;
   error: string | null;
+  errorReason: ErrorReason | null;
+  apiHealth: ApiHealth;
+  reconnectStatus: ReconnectStatus;
+  autoRefreshEnabled: boolean;
+  apiKeySource: ApiKeySource;
+  maskedApiKey: string | null;
+  consecutiveFailures: number;
+}
+
+export interface ErrorReason {
+  code: 'API_KEY_MISSING' | 'INVALID_API_KEY' | 'RATE_LIMIT_REACHED' | 'NETWORK_LOST' | 'PROVIDER_UNAVAILABLE' | 'AUTH_FAILED' | 'UNKNOWN';
+  message: string;
+  suggestedAction: string;
 }
 
 export interface MarketDataProvider {

@@ -13,7 +13,15 @@ const IDLE_STATE: MarketDataState = {
   status: 'DISCONNECTED',
   provider: { name: 'mock', label: 'Mock Data', isLive: false },
   lastUpdated: null,
+  lastLiveUpdate: null,
   error: null,
+  errorReason: null,
+  apiHealth: 'UNKNOWN',
+  reconnectStatus: 'IDLE',
+  autoRefreshEnabled: true,
+  apiKeySource: 'none',
+  maskedApiKey: null,
+  consecutiveFailures: 0,
 };
 
 export function useMarketData(symbol: string = 'XAU/USD', timeframe: Timeframe = 'M15') {
