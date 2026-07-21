@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { TrendingUp, TrendingDown, Maximize2, Loader2 } from 'lucide-react';
 import { GlassCard } from '../ui/GlassCard';
-import { goldMarket } from '../../data/trading';
+import { useGlobalMarket } from '../../hooks/useGlobalMarket';
+import { getSymbolLabel, getSymbolTvSymbol } from '../../store/marketStore';
 
 const TIMEFRAMES = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4'] as const;
 
@@ -9,6 +10,7 @@ export function TradingChart() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [timeframe, setTimeframe] = useState<string>('M15');
   const [loading, setLoading] = useState(true);
+  const { symbol, quote } = useGlobalMarket();
 
   useEffect(() => {
     setLoading(true);
@@ -22,7 +24,7 @@ export function TradingChart() {
     script.async = true;
     script.innerHTML = JSON.stringify({
       autosize: true,
-      symbol: 'OANDA:XAUUSD',
+      symbol: getSymbolTvSymbol(symbol),
       interval: timeframe,
       timezone: 'Etc/UTC',
       theme: 'dark',
@@ -44,7 +46,14 @@ export function TradingChart() {
       window.clearTimeout(timer);
       container.innerHTML = '';
     };
-  }, [timeframe]);
+  }, [timeframe, symbol]);
+
+  const bid = quote?.bid ?? 0;
+  const ask = quote?.ask ?? 0;
+  const spread = quote?.spread ?? 0;
+  const high = quote?.high ?? 0;
+  const low = quote?.low ?? 0;
+  const changePct = quote?.changePct ?? 0;
 
   return (
     <GlassCard className="overflow-hidden">
@@ -52,8 +61,8 @@ export function TradingChart() {
         <div className="flex items-center gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-white">XAU/USD</span>
-              <span className="rounded bg-brand-500/15 px-1.5 py-0.5 text-[10px] font-medium text-brand-300">Gold Spot</span>
+              <span className="text-sm font-semibold text-white">{symbol}</span>
+              <span className="rounded bg-brand-500/15 px-1.5 py-0.5 text-[10px] font-medium text-brand-300">{getSymbolLabel(symbol)}</span>
             </div>
             <p className="mt-0.5 text-[11px] text-slate-500">Live TradingView Chart</p>
           </div>
@@ -64,7 +73,7 @@ export function TradingChart() {
               <TrendingDown className="h-3.5 w-3.5 text-bear-400" />
               <div className="leading-tight">
                 <p className="text-[9px] uppercase tracking-wider text-slate-500">Bid</p>
-                <p className="tabular text-sm font-semibold text-bear-400">{goldMarket.bid.toFixed(2)}</p>
+                <p className="tabular text-sm font-semibold text-bear-400">{bid > 0 ? bid.toFixed(2) : '—'}</p>
               </div>
             </div>
             <div className="h-7 w-px bg-white/10" />
@@ -72,7 +81,7 @@ export function TradingChart() {
               <TrendingUp className="h-3.5 w-3.5 text-bull-400" />
               <div className="leading-tight">
                 <p className="text-[9px] uppercase tracking-wider text-slate-500">Ask</p>
-                <p className="tabular text-sm font-semibold text-bull-400">{goldMarket.ask.toFixed(2)}</p>
+                <p className="tabular text-sm font-semibold text-bull-400">{ask > 0 ? ask.toFixed(2) : '—'}</p>
               </div>
             </div>
           </div>
@@ -105,19 +114,21 @@ export function TradingChart() {
       <div className="grid grid-cols-4 gap-px border-t border-white/[0.06] bg-white/[0.04]">
         <div className="bg-ink-850/60 p-3">
           <p className="text-[10px] uppercase tracking-wider text-slate-500">Spread</p>
-          <p className="tabular mt-1 text-sm font-semibold text-slate-200">{goldMarket.spread.toFixed(2)}</p>
+          <p className="tabular mt-1 text-sm font-semibold text-slate-200">{spread > 0 ? spread.toFixed(2) : '—'}</p>
         </div>
         <div className="bg-ink-850/60 p-3">
           <p className="text-[10px] uppercase tracking-wider text-slate-500">Day High</p>
-          <p className="tabular mt-1 text-sm font-semibold text-bull-400">{goldMarket.high.toFixed(2)}</p>
+          <p className="tabular mt-1 text-sm font-semibold text-bull-400">{high > 0 ? high.toFixed(2) : '—'}</p>
         </div>
         <div className="bg-ink-850/60 p-3">
           <p className="text-[10px] uppercase tracking-wider text-slate-500">Day Low</p>
-          <p className="tabular mt-1 text-sm font-semibold text-bear-400">{goldMarket.low.toFixed(2)}</p>
+          <p className="tabular mt-1 text-sm font-semibold text-bear-400">{low > 0 ? low.toFixed(2) : '—'}</p>
         </div>
         <div className="bg-ink-850/60 p-3">
           <p className="text-[10px] uppercase tracking-wider text-slate-500">Change</p>
-          <p className="tabular mt-1 text-sm font-semibold text-bull-400">+{goldMarket.changePct.toFixed(2)}%</p>
+          <p className={`tabular mt-1 text-sm font-semibold ${changePct >= 0 ? 'text-bull-400' : 'text-bear-400'}`}>
+            {changePct !== 0 ? `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%` : '—'}
+          </p>
         </div>
       </div>
     </GlassCard>

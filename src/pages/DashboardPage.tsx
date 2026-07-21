@@ -12,9 +12,12 @@ import { ApiUsageCard } from '../components/dashboard/ApiUsageCard';
 import { DebugPanel } from '../components/dashboard/DebugPanel';
 import { StrategySignalCard } from '../components/dashboard/StrategySignalCard';
 import { useMarketData } from '../hooks/useMarketData';
+import { useGlobalSymbol, useGlobalTimeframe, getSymbolLabel } from '../store/marketStore';
 
 export function DashboardPage() {
-  const marketData = useMarketData('XAU/USD', 'M15');
+  const symbol = useGlobalSymbol();
+  const timeframe = useGlobalTimeframe();
+  const marketData = useMarketData(symbol, timeframe);
 
   return (
     <div className="space-y-4">
@@ -24,7 +27,7 @@ export function DashboardPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold text-white">Dashboard</h1>
-          <p className="text-xs text-slate-500">Real-time account overview and market intelligence</p>
+          <p className="text-xs text-slate-500">Real-time account overview and market intelligence · {symbol} ({getSymbolLabel(symbol)})</p>
         </div>
       </div>
 

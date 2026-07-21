@@ -12,7 +12,8 @@ import {
   brokerConnection, defaultSettings, openPositions as initialPositions,
   initialExecutionLog,
 } from '../data/execution';
-import { goldMarket, account } from '../data/trading';
+import { account } from '../data/trading';
+import { useGlobalMarket } from '../hooks/useGlobalMarket';
 
 let ticketCounter = 50421876;
 let logCounter = 100;
@@ -22,6 +23,7 @@ function timeNow(): string {
 }
 
 export function ExecutionPage() {
+  const { symbol, quote } = useGlobalMarket();
   const [mode, setMode] = useState<TradingMode>('SEMI_AUTO');
   const [engine, setEngine] = useState<TradingEngine>('MT5');
   const [settings, setSettings] = useState<TradeSettings>(defaultSettings);
@@ -33,6 +35,10 @@ export function ExecutionPage() {
 
   const openCount = positions.length;
   const riskAmount = (account.balance * settings.riskPct) / 100;
+
+  // Live bid/ask from the global market cache — same source as everywhere else.
+  const bid = quote?.bid ?? 0;
+  const ask = quote?.ask ?? 0;
 
   const handleBuy = useCallback((side: OrderSide) => {
     setPendingSide(side);
@@ -47,7 +53,7 @@ export function ExecutionPage() {
   const handleConfirm = useCallback(() => {
     const side = pendingSide;
     const isBuy = side === 'BUY';
-    const entry = isBuy ? goldMarket.ask : goldMarket.bid;
+    const entry = isBuy ? ask : bid;
     const ticket = ticketCounter++;
     const id = `p${ticket}`;
     const logId = `l${logCounter++}`;
@@ -55,7 +61,7 @@ export function ExecutionPage() {
     const newPosition: OpenPosition = {
       id,
       ticket,
-      symbol: 'XAU/USD',
+      symbol,
       side,
       lotSize: settings.lotSize,
       entryPrice: entry,
@@ -76,13 +82,13 @@ export function ExecutionPage() {
       id: logId,
       time: timeNow(),
       type: 'ORDER',
-      message: `${side} ${settings.lotSize.toFixed(2)} XAU/USD @ ${entry.toFixed(2)} — ${newPosition.strategy}`,
+      message: `${side} ${settings.lotSize.toFixed(2)} ${symbol} @ ${entry.toFixed(2)} — ${newPosition.strategy}`,
       status: 'FILLED',
       ticket,
-      symbol: 'XAU/USD',
+      symbol,
     }, ...prev]);
     setModalOpen(false);
-  }, [pendingSide, settings, mode]);
+  }, [pendingSide, settings, mode, symbol, ask, bid]);
 
   const handleClose = useCallback((id: string) => {
     setPositions((prev) => {
@@ -129,7 +135,7 @@ export function ExecutionPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold text-white">Trade Execution</h1>
-          <p className="text-xs text-slate-500">Order management, live positions & broker status</p>
+          <p className="text-xs text-slate-500">Order management, live positions & broker status · {symbol}</p>
         </div>
       </div>
 
@@ -145,8 +151,8 @@ export function ExecutionPage() {
             onSell={handleSell}
             onCloseAll={handleCloseAll}
             openCount={openCount}
-            bid={goldMarket.bid}
-            ask={goldMarket.ask}
+            bid={bid}
+            ask={ask}
           />
           <TradeSettingsPanel settings={settings} onChange={setSettings} accountBalance={account.balance} />
           <BrokerStatusCard broker={brokerConnection} />
@@ -166,7 +172,7 @@ export function ExecutionPage() {
         lotSize={settings.lotSize}
         stopLoss={settings.stopLoss}
         takeProfit={settings.takeProfit}
-        entryPrice={pendingSide === 'BUY' ? goldMarket.ask : goldMarket.bid}
+        entryPrice={pendingSide === 'BUY' ? ask : bid}
         riskAmount={riskAmount}
         onConfirm={handleConfirm}
         onCancel={() => setModalOpen(false)}

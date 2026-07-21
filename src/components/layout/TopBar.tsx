@@ -1,8 +1,27 @@
 import { Menu, Search, Power, Zap } from 'lucide-react';
-import { watchlist } from '../../data/trading';
 import { NotificationBell } from '../notifications/NotificationBell';
+import { SymbolSelector } from './SymbolSelector';
+import { useGlobalMarket } from '../../hooks/useGlobalMarket';
+import { useMarketCache } from '../../hooks/useMarketCache';
+import { SUPPORTED_SYMBOLS } from '../../store/marketStore';
 
 export function TopBar({ onToggleSidebar, onToggleMobile, onToggleNotifications, notificationUnreadCount }: { onToggleSidebar: () => void; onToggleMobile: () => void; onToggleNotifications: () => void; notificationUnreadCount: number; }) {
+  const { symbol, currentPrice } = useGlobalMarket();
+  const snapshot = useMarketCache();
+
+  // Build a live ticker from the cache. When the active symbol's quote
+  // is available, show it; otherwise show the symbol with a dash.
+  const tickerItems = SUPPORTED_SYMBOLS.map((s) => {
+    if (s.symbol === symbol && snapshot?.latestQuote) {
+      return {
+        symbol: s.symbol,
+        price: snapshot.latestQuote.price,
+        changePct: snapshot.latestQuote.changePct,
+      };
+    }
+    return { symbol: s.symbol, price: 0, changePct: 0 };
+  });
+
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-white/[0.06] bg-ink-900/70 px-4 backdrop-blur-xl lg:px-6">
       <button onClick={onToggleMobile} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white lg:hidden">
@@ -17,13 +36,31 @@ export function TopBar({ onToggleSidebar, onToggleMobile, onToggleNotifications,
           <span className="text-[11px] font-semibold tracking-wide text-bull-400">AI ACTIVE</span>
         </div>
       </div>
+
+      {/* Active symbol selector — changes here propagate everywhere */}
+      <SymbolSelector />
+
+      {/* Live price for active symbol */}
+      <div className="hidden items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 sm:flex">
+        <span className="text-[10px] uppercase tracking-wider text-slate-500">Price</span>
+        <span className="tabular text-sm font-bold text-white">
+          {currentPrice > 0 ? currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '—'}
+        </span>
+      </div>
+
       <div className="relative flex-1 overflow-hidden">
         <div className="flex w-max animate-ticker gap-6">
-          {[...watchlist, ...watchlist].map((item, i) => (
+          {[...tickerItems, ...tickerItems].map((item, i) => (
             <div key={i} className="flex items-center gap-2 whitespace-nowrap text-xs">
               <span className="font-semibold text-slate-300">{item.symbol}</span>
-              <span className="tabular text-slate-400">{item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
-              <span className={item.changePct >= 0 ? 'text-bull-400' : 'text-bear-400'}>{item.changePct >= 0 ? '+' : ''}{item.changePct.toFixed(2)}%</span>
+              <span className="tabular text-slate-400">
+                {item.price > 0 ? item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '—'}
+              </span>
+              {item.changePct !== 0 && (
+                <span className={item.changePct >= 0 ? 'text-bull-400' : 'text-bear-400'}>
+                  {item.changePct >= 0 ? '+' : ''}{item.changePct.toFixed(2)}%
+                </span>
+              )}
             </div>
           ))}
         </div>

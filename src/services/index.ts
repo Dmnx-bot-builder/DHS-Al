@@ -2,7 +2,6 @@
 export { apiClient, apiGet, apiPost, apiPut, apiDelete } from './apiClient';
 export { authService } from './authService';
 export { accountService } from './accountService';
-export { marketService } from './marketService';
 export { signalService } from './signalService';
 export { executionService } from './executionService';
 export { historyService } from './historyService';
@@ -13,6 +12,7 @@ export { marketCacheService } from './marketCacheService';
 export { rateLimitManager } from './rateLimitManager';
 export { planService } from './planService';
 export { MockProvider, createTwelveDataProvider } from './providers';
+export { computeStrategyAnalysis } from './marketStructureService';
 export { generateTradeReport } from './tradeReportGenerator';
 export { notificationService } from './notificationService';
 export { apiKeyStorageService } from './apiKeyStorageService';

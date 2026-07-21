@@ -9,6 +9,7 @@ import { TradeHistoryPage } from './pages/TradeHistoryPage';
 import { BacktestingPage } from './pages/BacktestingPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { useNotifications } from './hooks/useNotifications';
+import { MarketStoreProvider } from './store/marketStore';
 import type { AppNotification, DeepLinkTarget } from './types/notification';
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
     }
   };
   return (
+    <MarketStoreProvider>
     <div className="relative min-h-screen bg-ink-950 text-slate-200">
       <div className="pointer-events-none fixed inset-0 bg-grid-faint bg-grid opacity-40" />
       <div className="pointer-events-none fixed inset-0 bg-radial-glow" />
@@ -72,6 +74,7 @@ function App() {
         onNotificationClick={handleNotificationClick}
       />
     </div>
+    </MarketStoreProvider>
   );
 }
 export default App;

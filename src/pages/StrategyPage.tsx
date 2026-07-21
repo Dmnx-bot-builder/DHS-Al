@@ -9,12 +9,13 @@ import { AiDecisionPanel } from '../components/strategy/AiDecisionPanel';
 import { SessionConditionCard } from '../components/strategy/SessionConditionCard';
 import { TradeReportCard } from '../components/strategy/TradeReportCard';
 import { MarketDataStatusBar } from '../components/dashboard/MarketDataStatusBar';
-import { strategyData } from '../data/strategy';
 import { generateTradeReport } from '../services/tradeReportGenerator';
 import { strategyEventManager } from '../services/strategyEventManager';
 import { useMarketData } from '../hooks/useMarketData';
+import { useGlobalMarket } from '../hooks/useGlobalMarket';
 import { useStrategyEvents } from '../hooks/useStrategyEvents';
 import { useSignalId } from '../hooks/useSignalId';
+import { getSymbolLabel } from '../store/marketStore';
 
 const decisionBanner: Record<string, { text: string; bg: string; border: string }> = {
   BUY: { text: 'text-bull-400', bg: 'bg-bull-500/10', border: 'border-bull-500/30' },
@@ -23,20 +24,23 @@ const decisionBanner: Record<string, { text: string; bg: string; border: string 
 };
 
 export function StrategyPage() {
-  const s = strategyData;
-  const banner = decisionBanner[s.decision];
-  const marketData = useMarketData('XAU/USD', 'M15');
+  const { symbol, timeframe, analysis, currentPrice } = useGlobalMarket();
+  const marketData = useMarketData(symbol, timeframe);
   const events = useStrategyEvents();
   const signalIdEntry = useSignalId();
 
-  // Feed analysis into the event manager on mount and whenever strategyData changes
+  // Feed the live StrategyAnalysis into the event manager whenever it changes.
+  // This is the ONE StrategyAnalysis object — no duplicated analysis anywhere.
   useEffect(() => {
-    strategyEventManager.processAnalysis(s);
-  }, [s]);
+    if (analysis.structurePoints.length > 0) {
+      strategyEventManager.processAnalysis(analysis);
+    }
+  }, [analysis]);
 
-  const showReport = s.decision === 'BUY' || s.decision === 'SELL';
+  const banner = decisionBanner[analysis.decision];
+  const showReport = analysis.decision === 'BUY' || analysis.decision === 'SELL';
   const tradeReport = showReport
-    ? { ...generateTradeReport(s), signalId: signalIdEntry?.signalId ?? events.lastSignalId ?? undefined }
+    ? { ...generateTradeReport(analysis), signalId: signalIdEntry?.signalId ?? events.lastSignalId ?? undefined }
     : null;
 
   return (
@@ -49,15 +53,15 @@ export function StrategyPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-white">Strategy Analysis</h1>
-            <p className="text-xs text-slate-500">AI-powered market structure & signal analysis</p>
+            <p className="text-xs text-slate-500">AI-powered market structure & signal analysis · {getSymbolLabel(symbol)}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="brand" dot>{s.symbol}</Badge>
-          <Badge variant="gold">{s.timeframe}</Badge>
+          <Badge variant="brand" dot>{analysis.symbol}</Badge>
+          <Badge variant="gold">{analysis.timeframe}</Badge>
           <div className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5">
             <span className="text-[10px] uppercase tracking-wider text-slate-500">Price</span>
-            <span className="tabular text-sm font-bold text-white">{s.entryPrice.toFixed(2)}</span>
+            <span className="tabular text-sm font-bold text-white">{currentPrice > 0 ? currentPrice.toFixed(2) : '—'}</span>
           </div>
         </div>
       </div>
@@ -75,10 +79,10 @@ export function StrategyPage() {
             <div>
               <p className="text-[10px] uppercase tracking-wider text-slate-500">AI Recommendation</p>
               <div className="flex items-center gap-2">
-                <p className={`text-lg font-bold ${banner.text}`}>{s.decision.replace('_', ' ')}</p>
+                <p className={`text-lg font-bold ${banner.text}`}>{analysis.decision.replace('_', ' ')}</p>
                 <span className="flex items-center gap-0.5 text-xs text-bull-400">
                   <ArrowUpRight className="h-3.5 w-3.5" />
-                  {s.confidence}% confidence
+                  {analysis.confidence}% confidence
                 </span>
               </div>
             </div>
@@ -86,19 +90,19 @@ export function StrategyPage() {
           <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-4">
             <div className="text-right">
               <p className="text-[10px] uppercase tracking-wider text-slate-500">Entry</p>
-              <p className="tabular text-sm font-semibold text-slate-200">{s.entryPrice.toFixed(2)}</p>
+              <p className="tabular text-sm font-semibold text-slate-200">{analysis.entryPrice.toFixed(2)}</p>
             </div>
             <div className="text-right">
               <p className="text-[10px] uppercase tracking-wider text-slate-500">Stop Loss</p>
-              <p className="tabular text-sm font-semibold text-bear-400">{s.stopLoss.toFixed(2)}</p>
+              <p className="tabular text-sm font-semibold text-bear-400">{analysis.stopLoss.toFixed(2)}</p>
             </div>
             <div className="text-right">
               <p className="text-[10px] uppercase tracking-wider text-slate-500">Take Profit</p>
-              <p className="tabular text-sm font-semibold text-bull-400">{s.takeProfit.toFixed(2)}</p>
+              <p className="tabular text-sm font-semibold text-bull-400">{analysis.takeProfit.toFixed(2)}</p>
             </div>
             <div className="text-right">
               <p className="text-[10px] uppercase tracking-wider text-slate-500">R/R</p>
-              <p className="tabular text-sm font-semibold text-gold-400">{s.riskRewardRatio.toFixed(2)}</p>
+              <p className="tabular text-sm font-semibold text-gold-400">{analysis.riskRewardRatio.toFixed(2)}</p>
             </div>
           </div>
         </div>
@@ -108,18 +112,18 @@ export function StrategyPage() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         {/* Column 1 */}
         <div className="space-y-4">
-          <TrendAnalysisCard trend={s.trend} entryPrice={s.entryPrice} />
-          <IndicatorsCard indicators={s.indicators} />
+          <TrendAnalysisCard trend={analysis.trend} entryPrice={analysis.entryPrice} />
+          <IndicatorsCard indicators={analysis.indicators} />
         </div>
         {/* Column 2 */}
         <div className="space-y-4">
-          <MarketStructureCard points={s.structurePoints} />
-          <SessionConditionCard session={s.session} marketCondition={s.marketCondition} />
+          <MarketStructureCard points={analysis.structurePoints} />
+          <SessionConditionCard session={analysis.session} marketCondition={analysis.marketCondition} />
         </div>
         {/* Column 3 */}
         <div className="space-y-4">
-          <AiDecisionPanel decision={s.decision} confidence={s.confidence} reasons={s.reasons} />
-          <SmartMoneyCard concepts={s.smartMoneyConcepts} />
+          <AiDecisionPanel decision={analysis.decision} confidence={analysis.confidence} reasons={analysis.reasons} />
+          <SmartMoneyCard concepts={analysis.smartMoneyConcepts} />
         </div>
       </div>
 
